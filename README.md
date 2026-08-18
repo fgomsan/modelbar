@@ -8,17 +8,17 @@ Clone: `https://github.com/fgomsan/modelbar.git`
 
 ## What it inspects
 
-- LM Studio: HTTP `GET` on `127.0.0.1:1234` (`/api/v1/models`, then `/api/v0/models`). `lms ls` / `lms ps` only if nothing accepts TCP on `:1234`. On some Macs `lms` dies with an invalid passkey / Bionic auth error; listing still works via HTTP.
+- LM Studio: HTTP `GET` on `127.0.0.1:1234` (`/api/v1/models`, then `/api/v0/models`). `lms ls` / `lms ps` only if nothing accepts TCP on `:1234` **and** `ps` already shows an LM Studio process (any `lms` command auto-starts LM Studio when it is not running; ModelBar never triggers that). LM Studio installed but not running is reported as “not running”, not as unknown. On some Macs `lms` dies with an invalid passkey / Bionic auth error; listing still works via HTTP.
 - Ollama: HTTP `GET` on `127.0.0.1:11434` (`/api/tags` and `/api/ps`, independently). Does not follow `OLLAMA_HOST`.
 - Processes: `ps` (stdout/stderr drained so a large process list cannot stall). Idle `mlx_lm.server` is noted; a heavy one, or a foreign `llama-server` not owned by LM Studio’s own binary, is listed under In RAM. LM Studio’s own `llama-server` under `.lmstudio/` is not treated as foreign.
-- Loose GGUF under `~/models` (including shards). Click explains how to open it in LM Studio or llama.cpp.
+- Loose GGUF under `~/models` (including shards). Click explains how to open it in LM Studio or llama.cpp. ModelBar does not de-duplicate against LM Studio’s catalog: if LM Studio’s models directory *is* `~/models`, its GGUFs are listed twice.
 
-If LMS, Ollama, or `ps` cannot be inspected, the bar shows `?` (unknown), not `—` (idle).
+If LMS, Ollama, or `ps` cannot be inspected and nothing is in RAM, the bar shows `?` (unknown), not `—` (idle). If something is in RAM, the bar shows its name and the “cannot inspect” note appears in the menu and tooltip.
 
 ## What it does not do
 
 - No POST to LMS, Ollama, `:8080`, or `:8090`
-- No `lms load` / `lms unload`
+- No `lms load` / `lms unload`, and no `lms` call at all unless LM Studio is already running
 - Does not import, move, or delete model files
 - Does not start or kill `llama-server` / `mlx_lm.server`
 - Skips Ollama cloud tags (`:cloud`, `.cloud`, `-cloud`) and rows with `remote_model` / `remote_host`
@@ -41,7 +41,7 @@ open ModelBar.app
 
 Requires macOS 14+, Apple Silicon, and `swiftc` (Xcode Command Line Tools).
 
-Optional login item (this app’s own LaunchAgent label only):
+Optional login item (this app’s own LaunchAgent label only). Quit ModelBar first if it is already open, or you will get two menu-bar icons:
 
 ```bash
 chmod +x install-login.sh

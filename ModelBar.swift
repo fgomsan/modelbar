@@ -44,6 +44,11 @@ private enum L {
             ? "LM Studio: no responde en :1234 (ni lms)"
             : "LM Studio: no response on :1234 (or lms)"
     }
+    static var lmsOff: String {
+        es
+            ? "LM Studio: no está en marcha (:1234 cerrado)"
+            : "LM Studio: not running (:1234 closed)"
+    }
     static var psFailed: String {
         es ? "ps: no se pudieron listar procesos" : "ps: could not list processes"
     }
@@ -140,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lmsStatus: BackendStatus = .unknown(L.unknown)
     private var ollamaStatus: BackendStatus = .unknown(L.unknown)
     private var processesUnknown = false
+    private var scanInFlight = false
 
     private var lms: String { NSHomeDirectory() + "/.lmstudio/bin/lms" }
     private let ollamaHost = "http://127.0.0.1:11434"
@@ -184,11 +190,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func scanModels(force: Bool) {
         if !force, statusItem.button?.isHighlighted == true { return }
+        if scanInFlight { return }
+        scanInFlight = true
         scanGeneration += 1
         let gen = scanGeneration
         scanQueue.async {
             let snap = self.captureSnapshot()
             DispatchQueue.main.async {
+                self.scanInFlight = false
                 guard gen == self.scanGeneration else { return }
                 self.applySnapshot(snap)
                 self.applyTitle()
@@ -223,9 +232,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureSnapshot() -> Snapshot {
         var loaded: [LoadedModel] = []
         var disk: [DiskModel] = []
-        let lms = snapshotLMS(loaded: &loaded, disk: &disk)
-        let ollama = snapshotOllama(loaded: &loaded, disk: &disk)
         let unmanaged = unmanagedProcesses()
+        let lms = snapshotLMS(
+            loaded: &loaded,
+            disk: &disk,
+            lmsRunning: unmanaged.unknown ? nil : unmanaged.lmsRunning
+        )
+        let ollama = snapshotOllama(loaded: &loaded, disk: &disk)
         loaded.append(contentsOf: unmanaged.blocking)
         disk.append(contentsOf: scanGGUFs())
         disk = markLoaded(disk, loaded: loaded)
@@ -289,12 +302,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for model in loaded {
                 let item = NSMenuItem(
                     title: "\(model.label)\(Self.sizeSuffix(model.bytes, kind: model.sizeKind))  [\(model.badge)]",
-                    action: model.managed ? nil : #selector(warnForeign(_:)),
+                    action: model.managed ? #selector(warnViewer(_:)) : #selector(warnForeign(_:)),
                     keyEquivalent: ""
                 )
-                item.target = model.managed ? nil : self
+                item.target = self
                 item.representedObject = model
-                item.isEnabled = !model.managed
+                item.isEnabled = true
                 menu.addItem(item)
             }
         }
@@ -416,7 +429,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         a.runModal()
     }
 
-    private func snapshotLMS(loaded: inout [LoadedModel], disk: inout [DiskModel]) -> BackendStatus {
+    // lmsRunning: true/false = ps saw (or did not see) an LM Studio process; nil = ps could not tell.
+    // `lms` is only run when LM Studio is already running: any lms command auto-starts LM Studio
+    // if it is not running, and a viewer must never do that.
+    private func snapshotLMS(loaded: inout [LoadedModel], disk: inout [DiskModel], lmsRunning: Bool?) -> BackendStatus {
         let http = lmsHTTPCatalog()
         switch http {
         case .json(let obj):
@@ -430,7 +446,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
         guard FileManager.default.isExecutableFile(atPath: lms) else {
+            return .unavailable(L.lmsOff)
+        }
+        guard let lmsRunning else {
             return .unknown(L.lmsNoHTTP)
+        }
+        if !lmsRunning {
+            return .unavailable(L.lmsOff)
         }
         do {
             let rows = try lmsJSON(["ls", "--json"])
@@ -619,16 +641,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .unknown(L.unknown + " · Ollama")
     }
 
-    private func unmanagedProcesses() -> (blocking: [LoadedModel], idle: [String], unknown: Bool) {
+    private func unmanagedProcesses() -> (blocking: [LoadedModel], idle: [String], unknown: Bool, lmsRunning: Bool) {
         let result = run(["/bin/ps", "-axo", "rss=,command="], timeout: 2)
-        guard result.status == 0 else { return ([], [], true) }
+        guard result.status == 0 else { return ([], [], true, false) }
         var blocking: [LoadedModel] = []
         var idle: [String] = []
         var mlxHeavy = false
+        var lmsRunning = false
         for line in result.output.split(separator: "\n") {
             guard let parsed = Self.parsePS(String(line)) else { continue }
             let cmd = parsed.cmd
-            if isLMSOwned(cmd) { continue }
+            if isLMSOwned(cmd) {
+                lmsRunning = true
+                continue
+            }
             if isUnmanagedMLX(cmd) {
                 if mlxBlocksLoad(rssKB: parsed.rssKB, cmd: cmd) {
                     mlxHeavy = true
@@ -650,7 +676,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for model in blocking where seen.insert(model.runtime + "\0" + model.key).inserted {
             unique.append(model)
         }
-        return (unique, idle, false)
+        return (unique, idle, false, lmsRunning)
     }
 
     static func parsePS(_ line: String) -> (rssKB: Int64, cmd: String)? {
@@ -999,19 +1025,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let err = Pipe()
         proc.standardOutput = out
         proc.standardError = err
+        // Both pipes are drained by their readability handlers while the child runs, so a large
+        // process list cannot fill the pipe and stall the child. Each handler is the only reader
+        // of its pipe (in order); it signals EOF once, and the handler is removed only after that.
         let lock = NSLock()
         var stdout = Data()
         var stderr = Data()
+        let outEOF = DispatchSemaphore(value: 0)
+        let errEOF = DispatchSemaphore(value: 0)
         out.fileHandleForReading.readabilityHandler = { handle in
             let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                outEOF.signal()
+                return
+            }
             lock.lock()
             stdout.append(chunk)
             lock.unlock()
         }
         err.fileHandleForReading.readabilityHandler = { handle in
             let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                errEOF.signal()
+                return
+            }
             lock.lock()
             stderr.append(chunk)
             lock.unlock()
@@ -1042,11 +1081,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             err.fileHandleForReading.readabilityHandler = nil
             return (1, "timeout")
         }
+        // Child exited: wait (bounded) for each handler to see EOF, then stop them.
+        _ = outEOF.wait(timeout: .now() + 1)
+        _ = errEOF.wait(timeout: .now() + 1)
         out.fileHandleForReading.readabilityHandler = nil
         err.fileHandleForReading.readabilityHandler = nil
         lock.lock()
-        stdout.append(out.fileHandleForReading.readDataToEndOfFile())
-        stderr.append(err.fileHandleForReading.readDataToEndOfFile())
         let outText = String(data: stdout, encoding: .utf8) ?? ""
         let errText = String(data: stderr, encoding: .utf8) ?? ""
         lock.unlock()
