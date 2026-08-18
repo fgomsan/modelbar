@@ -28,6 +28,17 @@ cat > "$PLIST" <<EOF
 	<true/>
 	<key>KeepAlive</key>
 	<false/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>${HOME}</string>
+		<key>PATH</key>
+		<string>${HOME}/.lmstudio/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+		<key>MODELBAR_DS4_DIR</key>
+		<string>${HOME}/Desktop/Trabajos Claude/ds4</string>
+		<key>MODELBAR_GGUF_DIRS</key>
+		<string>${HOME}/models</string>
+	</dict>
 </dict>
 </plist>
 EOF

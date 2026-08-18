@@ -44,7 +44,7 @@ open ModelBar.app
 
 Requires macOS 14+, Apple Silicon, and `swiftc` (Xcode Command Line Tools).
 
-Optional login item (this app’s own LaunchAgent label only). Quit ModelBar first if it is already open, or you will get two menu-bar icons:
+Optional login item (this app’s own LaunchAgent label only). Quit ModelBar first if it is already open, or you will get two menu-bar icons. The agent sets `MODELBAR_DS4_DIR` and `MODELBAR_GGUF_DIRS` (the login item does not inherit your shell). Extra GGUF folders: add them to `MODELBAR_GGUF_DIRS` in `~/Library/LaunchAgents/com.fgs.model-bar.plist`, colon-separated, then reload the agent.
 
 ```bash
 chmod +x install-login.sh
