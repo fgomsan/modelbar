@@ -1,0 +1,38 @@
+#!/bin/zsh
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+"$ROOT/build.sh"
+
+DEST="$HOME/Applications"
+mkdir -p "$DEST"
+rm -rf "$DEST/ModelBar.app"
+cp -R "$ROOT/ModelBar.app" "$DEST/ModelBar.app"
+
+LABEL="com.fgs.model-bar"
+mkdir -p "$HOME/Library/LaunchAgents"
+PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
+BIN="$DEST/ModelBar.app/Contents/MacOS/ModelBar"
+
+cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>${LABEL}</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>${BIN}</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<false/>
+</dict>
+</plist>
+EOF
+
+UID_NUM="$(id -u)"
+launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
+launchctl bootstrap "gui/${UID_NUM}" "$PLIST"
+echo "installed login item → $DEST/ModelBar.app"
