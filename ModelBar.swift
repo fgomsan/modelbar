@@ -71,6 +71,13 @@ private enum L {
             ? "Está fuera de LM Studio/Ollama: \(names).\n\nQuítalo en la app que lo cargó. ModelBar no va a matar ese proceso."
             : "It is outside LM Studio/Ollama: \(names).\n\nUnload it in the app that loaded it. ModelBar will not kill that process."
     }
+    static var ds4Starting: String { es ? "ds4-server arrancando" : "ds4-server starting" }
+    static var ds4Title: String { es ? "DeepSeek V4 Flash es ajeno" : "DeepSeek V4 Flash is foreign" }
+    static var ds4Body: String {
+        es
+            ? "ModelBar no va a arrancar ni matar ds4-server. Cárgalo o quítalo con icua-ram (flash|off), el widget de Atajos, o el proyecto DS4."
+            : "ModelBar will not start or kill ds4-server. Load or unload it with icua-ram (flash|off), the Shortcuts widget, or the DS4 project."
+    }
     static var ok: String { es ? "Entendido" : "OK" }
 }
 
@@ -150,6 +157,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lms: String { NSHomeDirectory() + "/.lmstudio/bin/lms" }
     private let ollamaHost = "http://127.0.0.1:11434"
     private let lmsHTTP = "http://127.0.0.1:1234"
+    private let ds4HTTP = "http://127.0.0.1:8000"
+    private let ds4Key = "ds4-flash"
+    private let ds4Label = "DeepSeek V4 Flash"
+    private let ds4Short = "Flash"
     private let httpSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 5
@@ -239,12 +250,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             lmsRunning: unmanaged.unknown ? nil : unmanaged.lmsRunning
         )
         let ollama = snapshotOllama(loaded: &loaded, disk: &disk)
+        let ds4 = snapshotDS4(
+            loaded: &loaded,
+            disk: &disk,
+            processAlive: unmanaged.ds4Running,
+            rss: unmanaged.ds4RSS
+        )
         loaded.append(contentsOf: unmanaged.blocking)
-        disk.append(contentsOf: scanGGUFs())
+        disk.append(contentsOf: scanGGUFs(includeLMSModels: !lms.allowsInventory))
+        disk = dedupLooseGGUFs(disk)
         disk = markLoaded(disk, loaded: loaded)
         disk.sort { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
         var notes = unmanaged.idle
         if unmanaged.unknown { notes.insert(L.psFailed, at: 0) }
+        if let note = ds4.starting { notes.append(note) }
         return Snapshot(
             loaded: loaded,
             disk: disk,
@@ -302,7 +321,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for model in loaded {
                 let item = NSMenuItem(
                     title: "\(model.label)\(Self.sizeSuffix(model.bytes, kind: model.sizeKind))  [\(model.badge)]",
-                    action: model.managed ? #selector(warnViewer(_:)) : #selector(warnForeign(_:)),
+                    action: model.runtime == "DS4"
+                        ? #selector(warnDS4(_:))
+                        : (model.managed ? #selector(warnViewer(_:)) : #selector(warnForeign(_:))),
                     keyEquivalent: ""
                 )
                 item.target = self
@@ -325,7 +346,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         } else {
             for model in catalogs {
-                menu.addItem(diskItem(model, action: #selector(warnViewer(_:))))
+                let action: Selector = model.runtime == "DS4" ? #selector(warnDS4(_:)) : #selector(warnViewer(_:))
+                menu.addItem(diskItem(model, action: action))
             }
         }
 
@@ -417,6 +439,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func warnForeign(_ sender: NSMenuItem) {
         guard let model = sender.representedObject as? LoadedModel else { return }
         alert(L.foreignTitle, L.foreignBody(model.label))
+    }
+
+    @objc private func warnDS4(_ sender: Any?) {
+        alert(L.ds4Title, L.ds4Body)
     }
 
     private func alert(_ title: String, _ body: String) {
@@ -641,9 +667,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .unknown(L.unknown + " · Ollama")
     }
 
-    private func unmanagedProcesses() -> (blocking: [LoadedModel], idle: [String], unknown: Bool, lmsRunning: Bool) {
+    // GET-only. A closed :8000 is "not loaded", not an error. Never start ds4-server or call icua-ram.
+    private func snapshotDS4(
+        loaded: inout [LoadedModel],
+        disk: inout [DiskModel],
+        processAlive: Bool?,
+        rss: Int64
+    ) -> (path: String?, starting: String?) {
+        let onDisk = ds4DiskModel()
+        if let onDisk { disk.append(onDisk) }
+        let ready = jsonGET(ds4HTTP + "/v1/models")
+        let httpReady: Bool
+        if case .json = ready { httpReady = true } else { httpReady = false }
+        if httpReady, processAlive != false {
+            let bytes = rss > 0 ? rss : (onDisk?.bytes ?? 0)
+            loaded.append(
+                LoadedModel(
+                    runtime: "DS4",
+                    key: ds4Key,
+                    label: ds4Label,
+                    short: ds4Short,
+                    identifier: ds4Key,
+                    badge: Self.badge(runtime: "DS4", format: "gguf", vision: false, extra: nil),
+                    bytes: bytes,
+                    managed: false,
+                    sizeKind: rss > 0 ? .ram : .disk
+                )
+            )
+            return (onDisk?.path, nil)
+        }
+        if processAlive == true {
+            return (onDisk?.path, L.ds4Starting)
+        }
+        return (onDisk?.path, nil)
+    }
+
+    private func ds4Directory() -> String {
+        let env = ProcessInfo.processInfo.environment["MODELBAR_DS4_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let env, !env.isEmpty {
+            return (env as NSString).expandingTildeInPath
+        }
+        return NSHomeDirectory() + "/Desktop/Trabajos Claude/ds4"
+    }
+
+    private func ds4DiskModel() -> DiskModel? {
+        let link = (ds4Directory() as NSString).appendingPathComponent("ds4flash.gguf")
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: link, isDirectory: &isDir), !isDir.boolValue else {
+            return nil
+        }
+        let resolved = URL(fileURLWithPath: link).resolvingSymlinksInPath()
+        guard FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDir), !isDir.boolValue else {
+            return nil
+        }
+        let bytes = Int64((try? resolved.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        guard bytes > 0 else { return nil }
+        return DiskModel(
+            runtime: "DS4",
+            key: ds4Key,
+            label: ds4Label,
+            short: ds4Short,
+            badge: Self.badge(runtime: "DS4", format: "gguf", vision: false, extra: nil),
+            loaded: false,
+            path: resolved.path,
+            bytes: bytes
+        )
+    }
+
+    private func unmanagedProcesses() -> (
+        blocking: [LoadedModel], idle: [String], unknown: Bool, lmsRunning: Bool, ds4Running: Bool?, ds4RSS: Int64
+    ) {
         let result = run(["/bin/ps", "-axo", "rss=,command="], timeout: 2)
-        guard result.status == 0 else { return ([], [], true, false) }
+        guard result.status == 0 else { return ([], [], true, false, nil, 0) }
+        let ds4 = ds4Process()
         var blocking: [LoadedModel] = []
         var idle: [String] = []
         var mlxHeavy = false
@@ -676,7 +773,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for model in blocking where seen.insert(model.runtime + "\0" + model.key).inserted {
             unique.append(model)
         }
-        return (unique, idle, false, lmsRunning)
+        return (unique, idle, false, lmsRunning, ds4.running, ds4.rss)
+    }
+
+    // `pgrep -x` matches p_comm, not argv. Scanning `ps` command= tokens false-positives
+    // on shells / `pgrep -x ds4-server` that only mention the name.
+    private func ds4Process() -> (running: Bool?, rss: Int64) {
+        let listed = run(["/usr/bin/pgrep", "-x", "ds4-server"], timeout: 2)
+        if listed.output == "timeout" { return (nil, 0) }
+        guard listed.status == 0 else { return (false, 0) }
+        let pids = listed.output.split(whereSeparator: \.isWhitespace).compactMap { Int($0) }
+        guard !pids.isEmpty else { return (false, 0) }
+        var rss: Int64 = 0
+        for pid in pids {
+            let row = run(["/bin/ps", "-p", String(pid), "-o", "rss="], timeout: 2)
+            if row.status == 0, let kb = Int64(row.output.trimmingCharacters(in: .whitespacesAndNewlines)), kb > rss {
+                rss = kb
+            }
+        }
+        return (true, rss * 1024)
     }
 
     static func parsePS(_ line: String) -> (rssKB: Int64, cmd: String)? {
@@ -801,26 +916,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return last
     }
 
-    private func scanGGUFs() -> [DiskModel] {
-        let root = NSHomeDirectory() + "/models"
+    private func ggufRoots(includeLMSModels: Bool) -> [String] {
+        var roots = [NSHomeDirectory() + "/models"]
+        if includeLMSModels {
+            roots.append(NSHomeDirectory() + "/.lmstudio/models")
+        }
+        roots.append(NSHomeDirectory() + "/.cache/huggingface/hub")
+        let extra = ProcessInfo.processInfo.environment["MODELBAR_GGUF_DIRS"] ?? ""
+        for part in extra.split(separator: ":") {
+            let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                roots.append((trimmed as NSString).expandingTildeInPath)
+            }
+        }
+        var seen = Set<String>()
+        return roots.compactMap { raw in
+            let path = URL(fileURLWithPath: raw).standardizedFileURL.path
+            guard seen.insert(path).inserted else { return nil }
+            return path
+        }
+    }
+
+    private func scanGGUFs(includeLMSModels: Bool) -> [DiskModel] {
         var groups: [String: (url: URL, bytes: Int64)] = [:]
+        var seenFile = Set<String>()
         let fm = FileManager.default
-        guard fm.fileExists(atPath: root),
-              let enumerator = fm.enumerator(
-                at: URL(fileURLWithPath: root),
-                includingPropertiesForKeys: [.fileSizeKey],
-                options: [.skipsHiddenFiles]
-              ) else { return [] }
-        while let url = enumerator.nextObject() as? URL {
-            guard url.pathExtension.lowercased() == "gguf" else { continue }
-            if url.lastPathComponent.lowercased().contains("mmproj") { continue }
-            let key = ggufGroupKey(url, root: root)
-            let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-            if let existing = groups[key] {
-                let pick = url.lastPathComponent < existing.url.lastPathComponent ? url : existing.url
-                groups[key] = (pick, existing.bytes + size)
-            } else {
-                groups[key] = (url, size)
+        let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey]
+        for root in ggufRoots(includeLMSModels: includeLMSModels) {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue,
+                  let enumerator = fm.enumerator(
+                    at: URL(fileURLWithPath: root),
+                    includingPropertiesForKeys: keys,
+                    options: [.skipsHiddenFiles]
+                  ) else { continue }
+            while let url = enumerator.nextObject() as? URL {
+                let vals = try? url.resourceValues(forKeys: Set(keys))
+                if vals?.isDirectory == true {
+                    if shouldSkipGGUFDir(url.lastPathComponent) { enumerator.skipDescendants() }
+                    continue
+                }
+                guard url.pathExtension.lowercased() == "gguf" else { continue }
+                let name = url.lastPathComponent.lowercased()
+                if name.contains("mmproj") || name.contains("incomplete") { continue }
+                let resolved = url.resolvingSymlinksInPath()
+                guard fm.isReadableFile(atPath: resolved.path) else { continue }
+                if let id = fileIdentity(resolved), !seenFile.insert(id).inserted { continue }
+                let size = Int64((try? resolved.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+                guard size > 0 else { continue }
+                let key = ggufGroupKey(resolved, root: root)
+                if let existing = groups[key] {
+                    let pick = resolved.lastPathComponent < existing.url.lastPathComponent ? resolved : existing.url
+                    groups[key] = (pick, existing.bytes + size)
+                } else {
+                    groups[key] = (resolved, size)
+                }
             }
         }
         return groups.keys.sorted().compactMap { key in
@@ -836,6 +986,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 bytes: group.bytes
             )
         }
+    }
+
+    private func shouldSkipGGUFDir(_ name: String) -> Bool {
+        switch name.lowercased() {
+        case "blobs", "node_modules", "__pycache__", "caches":
+            return true
+        default:
+            return false
+        }
+    }
+
+    // Prefer catalog rows (LMS / Ollama / DS4). Drop loose GGUFs that are the
+    // same inode or the same resolved path, including a symlink and its target.
+    private func dedupLooseGGUFs(_ disk: [DiskModel]) -> [DiskModel] {
+        var seen = Set<String>()
+        var kept: [DiskModel] = []
+        for model in disk where model.runtime != "llama.cpp" {
+            if let path = model.path, let id = fileIdentity(URL(fileURLWithPath: path)) {
+                seen.insert(id)
+            }
+            kept.append(model)
+        }
+        for model in disk where model.runtime == "llama.cpp" {
+            if let path = model.path, let id = fileIdentity(URL(fileURLWithPath: path)), !seen.insert(id).inserted {
+                continue
+            }
+            kept.append(model)
+        }
+        return kept
+    }
+
+    private func fileIdentity(_ url: URL) -> String? {
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+        if let vals = try? resolved.resourceValues(forKeys: [.fileResourceIdentifierKey]),
+           let ident = vals.fileResourceIdentifier
+        {
+            return String(describing: ident)
+        }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDir), !isDir.boolValue else {
+            return nil
+        }
+        return resolved.path
     }
 
     private func ggufGroupKey(_ url: URL, root: String) -> String {

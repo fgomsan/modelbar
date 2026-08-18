@@ -1,6 +1,6 @@
 # ModelBar
 
-Tiny macOS menu-bar **viewer**: see which local LLM LM Studio or Ollama reports, plus foreign `llama-server` / `mlx_lm.server` processes.
+Tiny macOS menu-bar **viewer**: see which local LLM LM Studio or Ollama reports, plus foreign `llama-server` / `mlx_lm.server` / `ds4-server` processes.
 
 **Pre-alpha. Source-only. Read-only.** ModelBar does not load, unload, import, or kill anything. There is no signed or notarized downloadable binary.
 
@@ -10,17 +10,18 @@ Clone: `https://github.com/fgomsan/modelbar.git`
 
 - LM Studio: HTTP `GET` on `127.0.0.1:1234` (`/api/v1/models`, then `/api/v0/models`). `lms ls` / `lms ps` only if nothing accepts TCP on `:1234` **and** `ps` already shows an LM Studio process (any `lms` command auto-starts LM Studio when it is not running; ModelBar never triggers that). LM Studio installed but not running is reported as “not running”, not as unknown. On some Macs `lms` dies with an invalid passkey / Bionic auth error; listing still works via HTTP.
 - Ollama: HTTP `GET` on `127.0.0.1:11434` (`/api/tags` and `/api/ps`, independently). Does not follow `OLLAMA_HOST`.
-- Processes: `ps` (stdout/stderr drained so a large process list cannot stall). Idle `mlx_lm.server` is noted; a heavy one, or a foreign `llama-server` not owned by LM Studio’s own binary, is listed under In RAM. LM Studio’s own `llama-server` under `.lmstudio/` is not treated as foreign.
-- Loose GGUF under `~/models` (including shards). Click explains how to open it in LM Studio or llama.cpp. ModelBar does not de-duplicate against LM Studio’s catalog: if LM Studio’s models directory *is* `~/models`, its GGUFs are listed twice.
+- Processes: `ps` (stdout/stderr drained so a large process list cannot stall). Idle `mlx_lm.server` is noted; a heavy one, or a foreign `llama-server` not owned by LM Studio’s own binary, is listed under In RAM. LM Studio’s own `llama-server` under `.lmstudio/` is not treated as foreign. `ds4-server` is not treated as a generic `llama-server`.
+- DS4 (DeepSeek V4 Flash): always-on-disk row from the `ds4flash.gguf` symlink in `MODELBAR_DS4_DIR` (default `~/Desktop/Trabajos Claude/ds4`), using the target file size and a short name, not the 200-character GGUF filename. In RAM only when `pgrep -x ds4-server` **and** HTTP `GET 127.0.0.1:8000/v1/models` returns JSON. Process up but `:8000` not ready is a “starting” note, not a loaded row. Click warns; ModelBar never starts, stops, or POSTs to DS4, and never calls `icua-ram`.
+- Loose GGUF in a short list of roots (including shards): `~/models`, `~/.cache/huggingface/hub`, `~/.lmstudio/models` only when the LMS catalog is not available, plus `MODELBAR_GGUF_DIRS` (colon-separated, tildes and spaces allowed). Click explains how to open it in LM Studio or llama.cpp. Same inode or resolved path as an LMS/DS4/Ollama catalog row is dropped (symlink and target count as one). Hugging Face `blobs/` is not walked. This is not a whole-disk crawl.
 
 If LMS, Ollama, or `ps` cannot be inspected and nothing is in RAM, the bar shows `?` (unknown), not `—` (idle). If something is in RAM, the bar shows its name and the “cannot inspect” note appears in the menu and tooltip.
 
 ## What it does not do
 
-- No POST to LMS, Ollama, `:8080`, or `:8090`
+- No POST to LMS, Ollama, `:8000`, `:8080`, or `:8090`
 - No `lms load` / `lms unload`, and no `lms` call at all unless LM Studio is already running
 - Does not import, move, or delete model files
-- Does not start or kill `llama-server` / `mlx_lm.server`
+- Does not start or kill `llama-server` / `mlx_lm.server` / `ds4-server`, and does not call `icua-ram`
 - Skips Ollama cloud tags (`:cloud`, `.cloud`, `-cloud`) and rows with `remote_model` / `remote_host`
 
 ## Sizes
@@ -28,6 +29,8 @@ If LMS, Ollama, or `ps` cannot be inspected and nothing is in RAM, the bar shows
 - LM Studio: `size_bytes` (on-disk file size). RSS of its `llama-server` can be much larger.
 - Ollama In RAM: `size` from `/api/ps` (memory, labeled RAM).
 - Ollama On disk: `size` from `/api/tags` (file size, labeled disk).
+- DS4 On disk: size of the GGUF target behind `ds4flash.gguf`.
+- DS4 In RAM: RSS of `ds4-server` when known, otherwise the GGUF size.
 
 ## Install
 
