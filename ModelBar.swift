@@ -153,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var ollamaStatus: BackendStatus = .unknown(L.unknown)
     private var processesUnknown = false
     private var scanInFlight = false
+    private var lastDS4OnDisk = false
 
     private var lms: String { NSHomeDirectory() + "/.lmstudio/bin/lms" }
     private let ollamaHost = "http://127.0.0.1:11434"
@@ -201,14 +202,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func scanModels(force: Bool) {
         if !force, statusItem.button?.isHighlighted == true { return }
-        if scanInFlight { return }
+        if scanInFlight, !force { return }
         scanInFlight = true
         scanGeneration += 1
         let gen = scanGeneration
         scanQueue.async {
             let snap = self.captureSnapshot()
             DispatchQueue.main.async {
-                self.scanInFlight = false
+                if gen == self.scanGeneration {
+                    self.scanInFlight = false
+                }
                 guard gen == self.scanGeneration else { return }
                 self.applySnapshot(snap)
                 self.applyTitle()
@@ -234,10 +237,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastDisk = snap.disk
         lastIdleNotes = snap.idleNotes
         processesUnknown = snap.processesUnknown
+        lastDS4OnDisk = snap.disk.contains { $0.runtime == "DS4" }
     }
 
     private var inventoryUnknown: Bool {
         processesUnknown || lmsStatus.isUnknown || ollamaStatus.isUnknown
+    }
+
+    private var ds4Starting: Bool {
+        lastIdleNotes.contains(L.ds4Starting)
+    }
+
+    private var noBackendInventory: Bool {
+        !lmsStatus.allowsInventory && !ollamaStatus.allowsInventory && !lastDS4OnDisk
     }
 
     private func captureSnapshot() -> Snapshot {
@@ -277,7 +289,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyTitle() {
         let shown = lastLoaded
         if shown.isEmpty {
-            if inventoryUnknown || (!lmsStatus.allowsInventory && !ollamaStatus.allowsInventory) {
+            if ds4Starting {
+                statusItem.button?.title = "—"
+                statusItem.button?.toolTip = L.ds4Starting
+                return
+            }
+            if inventoryUnknown || noBackendInventory {
                 statusItem.button?.title = "?"
                 statusItem.button?.toolTip = titleNotes().joined(separator: "\n")
                 return
@@ -384,8 +401,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func emptyReason() -> String {
+        if ds4Starting { return L.ds4Starting }
         if inventoryUnknown { return L.unknown }
-        if !lmsStatus.allowsInventory, !ollamaStatus.allowsInventory { return L.unavailable }
+        if noBackendInventory { return L.unavailable }
         return L.idle
     }
 
@@ -679,8 +697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ready = jsonGET(ds4HTTP + "/v1/models")
         let httpReady: Bool
         if case .json = ready { httpReady = true } else { httpReady = false }
-        if httpReady, processAlive != false {
-            let bytes = rss > 0 ? rss : (onDisk?.bytes ?? 0)
+        if httpReady, processAlive == true {
             loaded.append(
                 LoadedModel(
                     runtime: "DS4",
@@ -689,9 +706,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     short: ds4Short,
                     identifier: ds4Key,
                     badge: Self.badge(runtime: "DS4", format: "gguf", vision: false, extra: nil),
-                    bytes: bytes,
+                    bytes: rss,
                     managed: false,
-                    sizeKind: rss > 0 ? .ram : .disk
+                    sizeKind: .ram
                 )
             )
             return (onDisk?.path, nil)
@@ -738,9 +755,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func unmanagedProcesses() -> (
         blocking: [LoadedModel], idle: [String], unknown: Bool, lmsRunning: Bool, ds4Running: Bool?, ds4RSS: Int64
     ) {
-        let result = run(["/bin/ps", "-axo", "rss=,command="], timeout: 2)
-        guard result.status == 0 else { return ([], [], true, false, nil, 0) }
         let ds4 = ds4Process()
+        let result = run(["/bin/ps", "-axo", "rss=,command="], timeout: 2)
+        guard result.status == 0 else { return ([], [], true, false, ds4.running, ds4.rss) }
         var blocking: [LoadedModel] = []
         var idle: [String] = []
         var mlxHeavy = false
