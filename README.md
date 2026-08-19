@@ -30,7 +30,7 @@ If LMS, Ollama, or `ps` cannot be inspected, the DS4 GGUF was not seen, and noth
 - Ollama In RAM: `size` from `/api/ps` (memory, labeled RAM).
 - Ollama On disk: `size` from `/api/tags` (file size, labeled disk).
 - DS4 On disk: size of the GGUF target behind `ds4flash.gguf`.
-- DS4 In RAM: RSS of `ds4-server` when known, otherwise the GGUF size.
+- DS4 In RAM: RSS of `ds4-server` when known. If RSS is missing, no size is shown (not the GGUF file size).
 
 ## Install
 

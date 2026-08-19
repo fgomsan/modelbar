@@ -829,8 +829,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func isLMSOwned(_ cmd: String) -> Bool {
-        guard let first = commandTokens(cmd).first else { return false }
-        let low = first.lowercased()
+        let low = cmd.lowercased()
         return low.contains(".lmstudio/") || low.contains("lm studio.app") || low.contains("bionic.app")
     }
 
@@ -924,10 +923,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return .json(["models": data])
             case .httpStatus(let code) where code == 401 || code == 403:
                 return outcome
-            case .noConnect:
-                last = outcome
             default:
-                return outcome
+                last = outcome
             }
         }
         return last
