@@ -4,15 +4,22 @@ Tiny macOS menu-bar **viewer**: which local LLM LM Studio or Ollama reports, plu
 
 Visor mínimo de barra de menús: qué modelo hay en RAM y qué hay en disco.
 
-**Pre-alpha. Source-only. Read-only.** Does not load, unload, import, or kill anything. There is no signed or notarized downloadable binary.
+**Pre-alpha. Read-only.** Does not load, unload, import, or kill anything. The GitHub Release zip is **ad-hoc signed, not notarized** — macOS Gatekeeper will warn until we have a Developer ID.
 
-## Install / Instalación
+## Download / Descarga
 
-**Need / Necesitas**
+Apple Silicon, macOS 14+. You still need **Ollama and/or LM Studio**.
 
-- macOS 14+, Apple Silicon
-- `git` and `swiftc` (Xcode Command Line Tools: `xcode-select --install`)
-- **Ollama and/or LM Studio** (at least one). Extra folders (DS4, loose GGUF) are optional.
+1. Get the zip from [Releases](https://github.com/fgomsan/modelbar/releases/latest).
+2. Unzip and move `ModelBar.app` to Applications.
+3. Open it. There is **no Dock icon** (menu bar only).
+4. If macOS says the app cannot be opened: **right-click → Open**, or System Settings → Privacy & Security → Open Anyway.
+
+Si macOS bloquea: clic derecho → Abrir. La barra en **—** es nada en RAM, no un fallo; abre el menú.
+
+## Build from source / Compilar
+
+**Need / Necesitas:** `git`, `swiftc` (Xcode Command Line Tools: `xcode-select --install`), macOS 14+, Apple Silicon.
 
 ```bash
 git clone https://github.com/fgomsan/modelbar.git

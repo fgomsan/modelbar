@@ -1,0 +1,21 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  app:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: chmod +x build.sh && ./build.sh
+      - name: Zip
+        run: ditto -c -k --keepParent ModelBar.app ModelBar-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ModelBar-macos-arm64
+          path: ModelBar-macos-arm64.zip
+          if-no-files-found: error

@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  app:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: chmod +x build.sh && ./build.sh
+      - name: Zip
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ditto -c -k --keepParent ModelBar.app "ModelBar-${VERSION}-macos-arm64.zip"
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cat > /tmp/notes.md <<'EOF'
+          Menu-bar viewer for local LLMs (Ollama / LM Studio). Apple Silicon, macOS 14+.
+
+          Visor de barra de menús. Apple Silicon, macOS 14+.
+
+          **Not notarized.** Ad-hoc signature only. Gatekeeper will warn.
+
+          1. Unzip and move `ModelBar.app` to Applications.
+          2. If macOS blocks it: right-click the app → Open (or System Settings → Privacy & Security → Open Anyway).
+          3. You still need Ollama and/or LM Studio installed. ModelBar does not load models.
+          4. A **—** in the bar means nothing is in RAM. Open the menu.
+
+          No está notarizado. Clic derecho → Abrir si macOS bloquea. Hace falta Ollama y/o LM Studio. La barra en **—** es nada en RAM.
+          EOF
+          gh release create "$GITHUB_REF_NAME" "ModelBar-${VERSION}-macos-arm64.zip" \
+            --title "ModelBar ${VERSION}" \
+            --notes-file /tmp/notes.md
