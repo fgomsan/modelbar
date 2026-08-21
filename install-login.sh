@@ -13,6 +13,21 @@ mkdir -p "$HOME/Library/LaunchAgents"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 BIN="$DEST/ModelBar.app/Contents/MacOS/ModelBar"
 
+# Optional: export MODELBAR_DS4_DIR and/or MODELBAR_GGUF_DIRS before running
+# this script if you want the login item to see those folders. A clean
+# LM Studio / Ollama setup does not need them.
+optional_env=""
+if [[ -n "${MODELBAR_DS4_DIR:-}" ]]; then
+	optional_env+="
+		<key>MODELBAR_DS4_DIR</key>
+		<string>${MODELBAR_DS4_DIR}</string>"
+fi
+if [[ -n "${MODELBAR_GGUF_DIRS:-}" ]]; then
+	optional_env+="
+		<key>MODELBAR_GGUF_DIRS</key>
+		<string>${MODELBAR_GGUF_DIRS}</string>"
+fi
+
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -33,11 +48,7 @@ cat > "$PLIST" <<EOF
 		<key>HOME</key>
 		<string>${HOME}</string>
 		<key>PATH</key>
-		<string>${HOME}/.lmstudio/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-		<key>MODELBAR_DS4_DIR</key>
-		<string>${HOME}/Desktop/Trabajos Claude/ds4</string>
-		<key>MODELBAR_GGUF_DIRS</key>
-		<string>${HOME}/models</string>
+		<string>${HOME}/.lmstudio/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>${optional_env}
 	</dict>
 </dict>
 </plist>

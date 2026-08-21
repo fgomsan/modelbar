@@ -75,8 +75,8 @@ private enum L {
     static var ds4Title: String { es ? "DeepSeek V4 Flash es ajeno" : "DeepSeek V4 Flash is foreign" }
     static var ds4Body: String {
         es
-            ? "ModelBar no va a arrancar ni matar ds4-server. Cárgalo o quítalo con icua-ram (flash|off), el widget de Atajos, o el proyecto DS4."
-            : "ModelBar will not start or kill ds4-server. Load or unload it with icua-ram (flash|off), the Shortcuts widget, or the DS4 project."
+            ? "ModelBar no va a arrancar ni matar ds4-server. Cárgalo o quítalo con la herramienta que lo arrancó."
+            : "ModelBar will not start or kill ds4-server. Load or unload it with the tool that started it."
     }
     static var ok: String { es ? "Entendido" : "OK" }
 }
@@ -719,17 +719,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return (onDisk?.path, nil)
     }
 
-    private func ds4Directory() -> String {
+    // Optional. Unset or missing path → no DS4 disk row; LMS/Ollama still work.
+    private func ds4Directory() -> String? {
         let env = ProcessInfo.processInfo.environment["MODELBAR_DS4_DIR"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let env, !env.isEmpty {
-            return (env as NSString).expandingTildeInPath
-        }
-        return NSHomeDirectory() + "/Desktop/Trabajos Claude/ds4"
+        guard let env, !env.isEmpty else { return nil }
+        return (env as NSString).expandingTildeInPath
     }
 
     private func ds4DiskModel() -> DiskModel? {
-        let link = (ds4Directory() as NSString).appendingPathComponent("ds4flash.gguf")
+        guard let dir = ds4Directory() else { return nil }
+        let link = (dir as NSString).appendingPathComponent("ds4flash.gguf")
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: link, isDirectory: &isDir), !isDir.boolValue else {
             return nil
