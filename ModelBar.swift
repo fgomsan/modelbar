@@ -269,7 +269,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rss: unmanaged.ds4RSS
         )
         loaded.append(contentsOf: unmanaged.blocking)
-        disk.append(contentsOf: scanGGUFs(includeLMSModels: !lms.allowsInventory))
+        disk.append(contentsOf: scanGGUFs(includeLMSModels: true))
+        disk.append(contentsOf: scanLMSFolders(already: disk))
         disk = dedupLooseGGUFs(disk)
         disk = markLoaded(disk, loaded: loaded)
         disk.sort { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
@@ -294,7 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 statusItem.button?.toolTip = L.ds4Starting
                 return
             }
-            if inventoryUnknown || noBackendInventory {
+            if lastDisk.isEmpty, inventoryUnknown || noBackendInventory {
                 statusItem.button?.title = "?"
                 statusItem.button?.toolTip = titleNotes().joined(separator: "\n")
                 return
@@ -402,8 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func emptyReason() -> String {
         if ds4Starting { return L.ds4Starting }
-        if inventoryUnknown { return L.unknown }
-        if noBackendInventory { return L.unavailable }
+        if lastDisk.isEmpty, inventoryUnknown { return L.unknown }
+        if lastDisk.isEmpty, noBackendInventory { return L.unavailable }
         return L.idle
     }
 
@@ -490,6 +491,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
         guard FileManager.default.isExecutableFile(atPath: lms) else {
+            // App can be open with the developer server off and no `lms` CLI.
+            // That is not "not running": on-disk models in ~/.lmstudio/models still count.
+            if lmsRunning == true { return .unknown(L.lmsNoHTTP) }
             return .unavailable(L.lmsOff)
         }
         guard let lmsRunning else {
@@ -913,20 +917,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func lmsHTTPCatalog() -> HTTPOutcome {
         var last: HTTPOutcome = .noConnect
-        for path in ["/api/v1/models", "/api/v0/models"] {
+        var emptyJSON = false
+        // v0 is the downloaded-library catalog. Empty `/api/v1/models` (or OpenAI
+        // `/v1/models` with nothing loaded) must not hide v0.
+        for path in ["/api/v0/models", "/api/v1/models", "/v1/models"] {
             let outcome = jsonGET(lmsHTTP + path)
             switch outcome {
             case .json(let obj):
                 let rows = Self.objects(obj["models"])
                 if !rows.isEmpty { return .json(["models": rows]) }
                 let data = Self.objects(obj["data"])
-                return .json(["models": data])
+                if !data.isEmpty { return .json(["models": data]) }
+                emptyJSON = true
             case .httpStatus(let code) where code == 401 || code == 403:
                 return outcome
             default:
                 last = outcome
             }
         }
+        if emptyJSON { return .json(["models": []]) }
         return last
     }
 
@@ -1009,6 +1018,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default:
             return false
         }
+    }
+
+    // LM Studio on Apple Silicon often stores Qwen as MLX/safetensors, not GGUF.
+    // HTTP :1234 and `lms` may both be missing on a clean Mac; the folder still exists.
+    private func scanLMSFolders(already: [DiskModel]) -> [DiskModel] {
+        let root = NSHomeDirectory() + "/.lmstudio/models"
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue,
+              let publishers = try? fm.contentsOfDirectory(atPath: root)
+        else { return [] }
+        let existingKeys = Set(already.filter { $0.runtime == "LMS" }.map { $0.key.lowercased() })
+        var models: [DiskModel] = []
+        for pub in publishers {
+            if pub.hasPrefix(".") { continue }
+            let pubPath = (root as NSString).appendingPathComponent(pub)
+            guard fm.fileExists(atPath: pubPath, isDirectory: &isDir), isDir.boolValue,
+                  let names = try? fm.contentsOfDirectory(atPath: pubPath)
+            else { continue }
+            for name in names {
+                if name.hasPrefix(".") { continue }
+                let key = "\(pub)/\(name)"
+                if existingKeys.contains(key.lowercased()) { continue }
+                let dir = (pubPath as NSString).appendingPathComponent(name)
+                guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue,
+                      let model = lmsFolderModel(dir: dir, key: key)
+                else { continue }
+                models.append(model)
+            }
+        }
+        return models
+    }
+
+    private func lmsFolderModel(dir: String, key: String) -> DiskModel? {
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey]
+        guard let enumerator = fm.enumerator(
+            at: URL(fileURLWithPath: dir),
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+        var bytes: Int64 = 0
+        var sawGGUF = false
+        var sawMLX = false
+        while let url = enumerator.nextObject() as? URL {
+            let vals = try? url.resourceValues(forKeys: Set(keys))
+            if vals?.isDirectory == true {
+                if shouldSkipGGUFDir(url.lastPathComponent) { enumerator.skipDescendants() }
+                continue
+            }
+            let ext = url.pathExtension.lowercased()
+            let size = Int64(vals?.fileSize ?? 0)
+            if ext == "gguf" {
+                sawGGUF = true
+                bytes += size
+            } else if ext == "safetensors" || ext == "npz" || ext == "ggml" {
+                sawMLX = true
+                bytes += size
+            }
+        }
+        // GGUF-only trees are already listed by scanGGUFs.
+        guard sawMLX, bytes > 0 else { return nil }
+        let format = sawGGUF ? "gguf" : "mlx"
+        let embed = isEmbedName(key)
+        return DiskModel(
+            runtime: "LMS",
+            key: key,
+            label: displayName(key, fallback: nil),
+            short: shortName(key, embed: embed),
+            badge: Self.badge(runtime: "LMS", format: format, vision: isVision(key), extra: embed ? "embed" : nil),
+            loaded: false,
+            path: dir,
+            bytes: bytes
+        )
     }
 
     // Prefer catalog rows (LMS / Ollama / DS4). Drop loose GGUFs that are the
