@@ -1,12 +1,18 @@
 # ModelBar
 
-Tiny macOS menu-bar **viewer**: see which local LLM LM Studio or Ollama reports, plus foreign `llama-server` / `mlx_lm.server` / `ds4-server` processes.
+Tiny macOS menu-bar **viewer**: which local LLM LM Studio or Ollama reports, plus foreign `llama-server` / `mlx_lm.server` / `ds4-server` processes.
 
-**Pre-alpha. Source-only. Read-only.** ModelBar does not load, unload, import, or kill anything. There is no signed or notarized downloadable binary.
+Visor mínimo de barra de menús: qué modelo hay en RAM y qué hay en disco.
 
-## Install
+**Pre-alpha. Source-only. Read-only.** Does not load, unload, import, or kill anything. There is no signed or notarized downloadable binary.
 
-Requires **macOS 14+**, **Apple Silicon**, and `swiftc` (Xcode Command Line Tools). You only need LM Studio and/or Ollama running locally. Optional extra folders (DS4, loose GGUF dirs) are not required.
+## Install / Instalación
+
+**Need / Necesitas**
+
+- macOS 14+, Apple Silicon
+- `git` and `swiftc` (Xcode Command Line Tools: `xcode-select --install`)
+- **Ollama and/or LM Studio** (at least one). Extra folders (DS4, loose GGUF) are optional.
 
 ```bash
 git clone https://github.com/fgomsan/modelbar.git
@@ -16,11 +22,15 @@ chmod +x build.sh
 open ModelBar.app
 ```
 
-If those optional folders are missing, ModelBar still runs and inspects LM Studio and Ollama.
+If `swiftc` is missing, `./build.sh` tells you to run `xcode-select --install` and stops.
 
-The menu bar shows **—** when nothing is in RAM (not “broken”). Open the menu: models on disk are listed. If neither Ollama nor LM Studio is installed, it says so and asks you to install one and press Refresh. It does not mention LM Studio on a Mac that does not have it.
+**First look / Al abrir**
 
-Optional login item (this app’s own LaunchAgent label only). Quit ModelBar first if it is already open, or you will get two menu-bar icons. The login item does not inherit your shell; it only sets `HOME` and a small `PATH` (including `~/.lmstudio/bin`). Extra folders are opt-in: export `MODELBAR_DS4_DIR` and/or `MODELBAR_GGUF_DIRS` before running the script, or add them later to `~/Library/LaunchAgents/com.fgs.model-bar.plist` (colon-separated, tildes and spaces allowed) and reload the agent.
+The bar shows **—** when nothing is in RAM. That is idle, not a crash. Open the menu: **Nada en RAM · N en disco** (or *Nothing in RAM*) and the model names. Click a name: ModelBar only informs; load it in Ollama or LM Studio. If neither app is installed, it asks you to install one and press Refresh. It does not mention LM Studio on a Mac that does not have it.
+
+## Start at login (optional)
+
+Quit ModelBar first if it is already open, or you will get two menu-bar icons. The login item does not inherit your shell; it only sets `HOME` and a small `PATH` (including `~/.lmstudio/bin`). Extra folders are opt-in: export `MODELBAR_DS4_DIR` and/or `MODELBAR_GGUF_DIRS` before running the script, or add them later to `~/Library/LaunchAgents/com.fgs.model-bar.plist` (colon-separated, tildes and spaces allowed) and reload the agent.
 
 ```bash
 chmod +x install-login.sh
