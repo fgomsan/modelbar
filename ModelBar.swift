@@ -49,6 +49,11 @@ private enum L {
             ? "LM Studio: no está en marcha (:1234 cerrado)"
             : "LM Studio: not running (:1234 closed)"
     }
+    static var ollamaNoHTTP: String {
+        es
+            ? "Ollama: en marcha, pero :11434 no responde en este Mac"
+            : "Ollama: running, but :11434 does not respond on this Mac"
+    }
     static var psFailed: String {
         es ? "ps: no se pudieron listar procesos" : "ps: could not list processes"
     }
@@ -154,9 +159,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var processesUnknown = false
     private var scanInFlight = false
     private var lastDS4OnDisk = false
+    // Last Ollama base URL that answered on this Mac (loopback or another local IP).
+    private var cachedOllamaBase: String?
 
     private var lms: String { NSHomeDirectory() + "/.lmstudio/bin/lms" }
-    private let ollamaHost = "http://127.0.0.1:11434"
     private let lmsHTTP = "http://127.0.0.1:1234"
     private let ds4HTTP = "http://127.0.0.1:8000"
     private let ds4Key = "ds4-flash"
@@ -261,7 +267,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             disk: &disk,
             lmsRunning: unmanaged.unknown ? nil : unmanaged.lmsRunning
         )
-        let ollama = snapshotOllama(loaded: &loaded, disk: &disk)
+        let ollama = snapshotOllama(
+            loaded: &loaded,
+            disk: &disk,
+            ollamaRunning: unmanaged.unknown ? nil : unmanaged.ollamaRunning
+        )
         let ds4 = snapshotDS4(
             loaded: &loaded,
             disk: &disk,
@@ -612,9 +622,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return type.contains("embed") || isEmbedName(key)
     }
 
-    private func snapshotOllama(loaded: inout [LoadedModel], disk: inout [DiskModel]) -> BackendStatus {
-        let tagsOut = jsonGET(ollamaHost + "/api/tags")
-        let psOut = jsonGET(ollamaHost + "/api/ps")
+    // Probe loopback first, then this Mac's own IPv4 addresses. Never follow a
+    // remote OLLAMA_HOST (that would list another machine's models).
+    private func snapshotOllama(
+        loaded: inout [LoadedModel],
+        disk: inout [DiskModel],
+        ollamaRunning: Bool?
+    ) -> BackendStatus {
+        let probe = probeOllamaHTTP()
+        let tagsOut = probe.tags
+        let psOut = probe.ps
         var sawJSON = false
         var unknown = false
         var unavailable = false
@@ -683,10 +700,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             unknown = true
         }
 
+        if !disk.contains(where: { $0.runtime == "Ollama" }) {
+            disk.append(contentsOf: scanOllamaManifests())
+        }
+
         if unknown { return .unknown(L.unknown + " · Ollama") }
         if sawJSON { return .available }
-        if unavailable { return .unavailable(L.unavailable + " · Ollama") }
+        if unavailable {
+            if ollamaRunning == true { return .unknown(L.ollamaNoHTTP) }
+            return .unavailable(L.unavailable + " · Ollama")
+        }
         return .unknown(L.unknown + " · Ollama")
+    }
+
+    private func probeOllamaHTTP() -> (tags: HTTPOutcome, ps: HTTPOutcome) {
+        var urls = ollamaCandidateURLs()
+        if let cached = cachedOllamaBase {
+            urls.removeAll { $0 == cached }
+            urls.insert(cached, at: 0)
+        }
+        var lastFail: HTTPOutcome = .noConnect
+        for base in urls {
+            let tags = jsonGET(base + "/api/tags")
+            switch tags {
+            case .json:
+                cachedOllamaBase = base
+                return (tags, jsonGET(base + "/api/ps"))
+            case .noConnect:
+                continue
+            case .httpStatus, .timeout, .failed:
+                lastFail = tags
+            }
+        }
+        cachedOllamaBase = nil
+        return (lastFail, lastFail)
+    }
+
+    private func ollamaCandidateURLs() -> [String] {
+        var urls: [String] = []
+        var seen = Set<String>()
+        func add(_ raw: String) {
+            var base = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if base.hasSuffix("/") { base.removeLast() }
+            guard !base.isEmpty, seen.insert(base).inserted else { return }
+            urls.append(base)
+        }
+        add("http://127.0.0.1:11434")
+        for ip in localIPv4Addresses() {
+            add("http://\(ip):11434")
+        }
+        return urls
+    }
+
+    // Addresses assigned to this Mac only. Skips loopback (already probed) and
+    // link-local. Does not scan the LAN or follow a remote OLLAMA_HOST.
+    private func localIPv4Addresses() -> [String] {
+        var found: [String] = []
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0 else { return [] }
+        defer { freeifaddrs(ifaddr) }
+        var ptr = ifaddr
+        while let p = ptr {
+            defer { ptr = p.pointee.ifa_next }
+            let flags = Int32(p.pointee.ifa_flags)
+            if (flags & IFF_UP) == 0 { continue }
+            if (flags & IFF_LOOPBACK) != 0 { continue }
+            guard let addr = p.pointee.ifa_addr, addr.pointee.sa_family == sa_family_t(AF_INET) else {
+                continue
+            }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            var namelen = socklen_t(addr.pointee.sa_len)
+            if namelen == 0 { namelen = socklen_t(MemoryLayout<sockaddr_in>.size) }
+            guard getnameinfo(addr, namelen, &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else {
+                continue
+            }
+            let ip = String(cString: host)
+            if ip.isEmpty || ip.hasPrefix("169.254.") { continue }
+            if !found.contains(ip) { found.append(ip) }
+        }
+        let ranked = found.sorted { a, b in
+            func rank(_ ip: String) -> Int {
+                if ip.hasPrefix("100.") { return 0 }
+                if ip.hasPrefix("10.") { return 1 }
+                if ip.hasPrefix("192.168.") { return 2 }
+                return 3
+            }
+            let ra = rank(a), rb = rank(b)
+            if ra != rb { return ra < rb }
+            return a < b
+        }
+        return Array(ranked.prefix(8))
     }
 
     // GET-only. A closed :8000 is "not loaded", not an error. Never start ds4-server or call icua-ram.
@@ -757,20 +860,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func unmanagedProcesses() -> (
-        blocking: [LoadedModel], idle: [String], unknown: Bool, lmsRunning: Bool, ds4Running: Bool?, ds4RSS: Int64
+        blocking: [LoadedModel], idle: [String], unknown: Bool, lmsRunning: Bool, ollamaRunning: Bool,
+        ds4Running: Bool?, ds4RSS: Int64
     ) {
         let ds4 = ds4Process()
         let result = run(["/bin/ps", "-axo", "rss=,command="], timeout: 2)
-        guard result.status == 0 else { return ([], [], true, false, ds4.running, ds4.rss) }
+        guard result.status == 0 else { return ([], [], true, false, false, ds4.running, ds4.rss) }
         var blocking: [LoadedModel] = []
         var idle: [String] = []
         var mlxHeavy = false
         var lmsRunning = false
+        var ollamaRunning = false
         for line in result.output.split(separator: "\n") {
             guard let parsed = Self.parsePS(String(line)) else { continue }
             let cmd = parsed.cmd
             if isLMSOwned(cmd) {
                 lmsRunning = true
+                continue
+            }
+            if isOllamaOwned(cmd) {
+                ollamaRunning = true
                 continue
             }
             if isUnmanagedMLX(cmd) {
@@ -794,7 +903,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for model in blocking where seen.insert(model.runtime + "\0" + model.key).inserted {
             unique.append(model)
         }
-        return (unique, idle, false, lmsRunning, ds4.running, ds4.rss)
+        return (unique, idle, false, lmsRunning, ollamaRunning, ds4.running, ds4.rss)
     }
 
     // `pgrep -x` matches p_comm, not argv. Scanning `ps` command= tokens false-positives
@@ -835,6 +944,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func isLMSOwned(_ cmd: String) -> Bool {
         let low = cmd.lowercased()
         return low.contains(".lmstudio/") || low.contains("lm studio.app") || low.contains("bionic.app")
+    }
+
+    private func isOllamaOwned(_ cmd: String) -> Bool {
+        let low = cmd.lowercased()
+        if low.contains("ollama.app/") { return true }
+        guard let first = commandTokens(cmd).first else { return false }
+        return pathLast(first).lowercased() == "ollama"
     }
 
     private func isInterpreter(_ token: String) -> Bool {
@@ -1049,6 +1165,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         return models
+    }
+
+    // Same idea as LMS folders: HTTP may be bound to a Tailscale/LAN IP, or the
+    // daemon may be off. ~/.ollama/models/manifests still names the local library.
+    private func scanOllamaManifests() -> [DiskModel] {
+        let root = NSHomeDirectory() + "/.ollama/models/manifests"
+        let blobs = NSHomeDirectory() + "/.ollama/models/blobs"
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue,
+              let enumerator = fm.enumerator(
+                at: URL(fileURLWithPath: root),
+                includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+              )
+        else { return [] }
+        var models: [DiskModel] = []
+        var seen = Set<String>()
+        while let url = enumerator.nextObject() as? URL {
+            let vals = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
+            if vals?.isDirectory == true { continue }
+            let sizeHint = Int64(vals?.fileSize ?? 0)
+            if sizeHint <= 0 || sizeHint > 1_048_576 { continue }
+            let rel = ollamaManifestRelative(url, root: root)
+            guard let name = ollamaNameFromManifestPath(rel), !isCloudName(name) else { continue }
+            if !seen.insert(name.lowercased()).inserted { continue }
+            guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            let bytes = ollamaManifestBytes(obj, blobsDir: blobs)
+            let embed = isEmbedName(name)
+            models.append(
+                DiskModel(
+                    runtime: "Ollama",
+                    key: name,
+                    label: ollamaDisplayName(name),
+                    short: ollamaShort(name, embed: embed),
+                    badge: Self.badge(runtime: "Ollama", format: "gguf", vision: isVision(name), extra: embed ? "embed" : nil),
+                    loaded: false,
+                    path: url.path,
+                    bytes: bytes
+                )
+            )
+        }
+        return models
+    }
+
+    private func ollamaManifestRelative(_ url: URL, root: String) -> String {
+        let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let rootPath = URL(fileURLWithPath: root).standardizedFileURL.path
+        if path.hasPrefix(rootPath) {
+            return String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        return url.lastPathComponent
+    }
+
+    private func ollamaNameFromManifestPath(_ rel: String) -> String? {
+        let parts = rel.split(separator: "/").map(String.init)
+        guard parts.count >= 2 else { return nil }
+        let tag = parts[parts.count - 1]
+        let model = parts[parts.count - 2]
+        guard !tag.isEmpty, !model.isEmpty else { return nil }
+        let prefix = Array(parts.dropLast(2))
+        if prefix.count == 2, prefix[0] == "registry.ollama.ai", prefix[1] == "library" {
+            return "\(model):\(tag)"
+        }
+        if prefix.isEmpty {
+            return "\(model):\(tag)"
+        }
+        return prefix.joined(separator: "/") + "/" + model + ":" + tag
+    }
+
+    private func ollamaManifestBytes(_ obj: [String: Any], blobsDir: String) -> Int64 {
+        var total: Int64 = 0
+        var layers = Self.objects(obj["layers"])
+        if let config = obj["config"] as? [String: Any] {
+            layers.append(config)
+        }
+        for layer in layers {
+            if let digest = layer["digest"] as? String {
+                let blob = ollamaBlobBytes(digest: digest, blobsDir: blobsDir)
+                if blob > 0 {
+                    total += blob
+                    continue
+                }
+            }
+            total += Self.int64(layer["size"])
+        }
+        return total
+    }
+
+    private func ollamaBlobBytes(digest: String, blobsDir: String) -> Int64 {
+        let name = digest.replacingOccurrences(of: ":", with: "-")
+        guard !name.isEmpty else { return 0 }
+        let path = (blobsDir as NSString).appendingPathComponent(name)
+        return Int64((try? URL(fileURLWithPath: path).resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
     }
 
     private func lmsFolderModel(dir: String, key: String) -> DiskModel? {
