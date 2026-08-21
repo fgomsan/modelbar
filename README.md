@@ -18,6 +18,8 @@ open ModelBar.app
 
 If those optional folders are missing, ModelBar still runs and inspects LM Studio and Ollama.
 
+The menu bar shows **—** when nothing is in RAM (not “broken”). Open the menu: models on disk are listed. If neither Ollama nor LM Studio is installed, it says so and asks you to install one and press Refresh. It does not mention LM Studio on a Mac that does not have it.
+
 Optional login item (this app’s own LaunchAgent label only). Quit ModelBar first if it is already open, or you will get two menu-bar icons. The login item does not inherit your shell; it only sets `HOME` and a small `PATH` (including `~/.lmstudio/bin`). Extra folders are opt-in: export `MODELBAR_DS4_DIR` and/or `MODELBAR_GGUF_DIRS` before running the script, or add them later to `~/Library/LaunchAgents/com.fgs.model-bar.plist` (colon-separated, tildes and spaces allowed) and reload the agent.
 
 ```bash
@@ -40,7 +42,7 @@ rm -f "$HOME/Library/LaunchAgents/com.fgs.model-bar.plist"
 - DS4 (DeepSeek V4 Flash, optional): only if `MODELBAR_DS4_DIR` is set. Then an always-on-disk row comes from the `ds4flash.gguf` symlink in that directory, using the target file size and a short name, not the 200-character GGUF filename. If the variable is unset or the path is missing, ModelBar still runs. In RAM only when `pgrep -x ds4-server` is confirmed **and** HTTP `GET 127.0.0.1:8000/v1/models` returns JSON (`pgrep` timeout is not loaded). Process up but `:8000` not ready is a “starting” note, not a loaded row. The disk row stays visible while it is in RAM. Click warns; ModelBar never starts, stops, or POSTs to DS4.
 - Loose GGUF in a short list of roots (including shards): `~/models`, `~/.lmstudio/models`, `~/.cache/huggingface/hub`, plus optional `MODELBAR_GGUF_DIRS` (colon-separated, tildes and spaces allowed). Missing roots are skipped. Click explains how to open it in LM Studio or llama.cpp. Same inode or resolved path as an LMS/DS4/Ollama catalog row is dropped (symlink and target count as one). Hugging Face `blobs/` is not walked. This is not a whole-disk crawl.
 
-If LMS, Ollama, or `ps` cannot be inspected, nothing is on disk, and nothing is in RAM, the bar shows `?` (unknown), not `—` (idle). Models found on disk (LMS folder, Ollama manifests, GGUF, or a DS4 row) are enough inventory to stay idle (`—`) when the HTTP APIs are down. If `ds4-server` is up but `:8000` is not ready, the bar stays `—` and the tooltip/menu say “starting”, not “nothing loaded”. If something is in RAM, the bar shows its name and the “cannot inspect” note appears in the menu and tooltip.
+If LMS, Ollama, or `ps` cannot be inspected, nothing is on disk, and nothing is in RAM, the bar shows `?` (unknown), not `—` (idle). Models found on disk (LMS folder, Ollama manifests, GGUF, or a DS4 row) are enough inventory to stay idle (`—`) when the HTTP APIs are down. Idle means nothing in RAM; the tooltip and menu list what is on disk. If neither Ollama nor LM Studio is installed, the bar asks you to install one. If `ds4-server` is up but `:8000` is not ready, the bar stays `—` and the tooltip/menu say “starting”. If something is in RAM, the bar shows its name and the “cannot inspect” note appears in the menu and tooltip.
 
 ## What it does not do
 

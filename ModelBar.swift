@@ -19,7 +19,7 @@ private enum L {
         }
     }
 
-    static var idle: String { es ? "Nada cargado" : "Nothing loaded" }
+    static var idle: String { es ? "Nada en RAM" : "Nothing in RAM" }
     static var scanning: String { es ? "Buscando modelos…" : "Scanning models…" }
     static var inRAM: String { es ? "En RAM" : "In RAM" }
     static var onDisk: String { es ? "En disco" : "On disk" }
@@ -32,6 +32,14 @@ private enum L {
     static var systemLanguage: String { es ? "Sistema" : "System" }
     static var unknown: String { es ? "Estado desconocido" : "Status unknown" }
     static var unavailable: String { es ? "Backend no disponible" : "Backend unavailable" }
+    static var installBackends: String {
+        es
+            ? "Instala Ollama o LM Studio y pulsa Actualizar"
+            : "Install Ollama or LM Studio and press Refresh"
+    }
+    static func idleWithDisk(_ n: Int) -> String {
+        es ? "Nada en RAM · \(n) en disco" : "Nothing in RAM · \(n) on disk"
+    }
     static var disk: String { es ? "disco" : "disk" }
     static var ram: String { es ? "RAM" : "RAM" }
     static var lmsHTTPAuth: String {
@@ -90,6 +98,8 @@ private enum BackendStatus {
     case available
     case unavailable(String)
     case unknown(String)
+    // Not installed: omit from the menu. Not unknown, not a failure.
+    case notInstalled
 
     var isUnknown: Bool {
         if case .unknown = self { return true }
@@ -103,7 +113,7 @@ private enum BackendStatus {
 
     var label: String {
         switch self {
-        case .available: return ""
+        case .available, .notInstalled: return ""
         case .unavailable(let s), .unknown(let s): return s
         }
     }
@@ -297,6 +307,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    private var noBackendsInstalled: Bool {
+        if case .notInstalled = lmsStatus, case .notInstalled = ollamaStatus {
+            return !lastDS4OnDisk
+        }
+        return false
+    }
+
     private func applyTitle() {
         let shown = lastLoaded
         if shown.isEmpty {
@@ -307,11 +324,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if lastDisk.isEmpty, inventoryUnknown || noBackendInventory {
                 statusItem.button?.title = "?"
-                statusItem.button?.toolTip = titleNotes().joined(separator: "\n")
+                statusItem.button?.toolTip = noBackendsInstalled
+                    ? L.installBackends
+                    : titleNotes().joined(separator: "\n")
                 return
             }
             statusItem.button?.title = "—"
-            statusItem.button?.toolTip = L.idle
+            if lastDisk.isEmpty {
+                statusItem.button?.toolTip = L.idle
+            } else {
+                let head = L.idleWithDisk(lastDisk.count)
+                let names = lastDisk.prefix(8).map(\.label)
+                statusItem.button?.toolTip = ([head] + names).joined(separator: "\n")
+            }
             return
         }
         let names = shown.map(\.short).joined(separator: "+")
@@ -413,8 +438,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func emptyReason() -> String {
         if ds4Starting { return L.ds4Starting }
+        if lastDisk.isEmpty, noBackendsInstalled { return L.installBackends }
         if lastDisk.isEmpty, inventoryUnknown { return L.unknown }
         if lastDisk.isEmpty, noBackendInventory { return L.unavailable }
+        if !lastDisk.isEmpty { return L.idleWithDisk(lastDisk.count) }
         return L.idle
     }
 
@@ -504,6 +531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // App can be open with the developer server off and no `lms` CLI.
             // That is not "not running": on-disk models in ~/.lmstudio/models still count.
             if lmsRunning == true { return .unknown(L.lmsNoHTTP) }
+            if !lmsPresent() { return .notInstalled }
             return .unavailable(L.lmsOff)
         }
         guard let lmsRunning else {
@@ -641,7 +669,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sawJSON = true
             let running = obj["models"] as? [[String: Any]] ?? []
             for row in running {
-                guard let name = row["name"] as? String, !isCloudRow(row) else { continue }
+                guard let name = ollamaRowName(row), !isCloudRow(row) else { continue }
                 let embed = isEmbedName(name)
                 loaded.append(
                     LoadedModel(
@@ -674,7 +702,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let models = obj["models"] as? [[String: Any]] ?? []
             let loadedNames = Set(loaded.filter { $0.runtime == "Ollama" }.map(\.key))
             for row in models {
-                guard let name = row["name"] as? String, !isCloudRow(row) else { continue }
+                guard let name = ollamaRowName(row), !isCloudRow(row) else { continue }
                 let embed = isEmbedName(name)
                 disk.append(
                     DiskModel(
@@ -708,6 +736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if sawJSON { return .available }
         if unavailable {
             if ollamaRunning == true { return .unknown(L.ollamaNoHTTP) }
+            if !ollamaPresent() { return .notInstalled }
             return .unavailable(L.unavailable + " · Ollama")
         }
         return .unknown(L.unknown + " · Ollama")
@@ -944,6 +973,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func isLMSOwned(_ cmd: String) -> Bool {
         let low = cmd.lowercased()
         return low.contains(".lmstudio/") || low.contains("lm studio.app") || low.contains("bionic.app")
+    }
+
+    private func lmsPresent() -> Bool {
+        let fm = FileManager.default
+        let apps = [
+            "/Applications/LM Studio.app",
+            NSHomeDirectory() + "/Applications/LM Studio.app",
+        ]
+        if apps.contains(where: { fm.fileExists(atPath: $0) }) { return true }
+        if fm.isExecutableFile(atPath: lms) { return true }
+        var isDir: ObjCBool = false
+        let models = NSHomeDirectory() + "/.lmstudio/models"
+        return fm.fileExists(atPath: models, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    private func ollamaPresent() -> Bool {
+        let fm = FileManager.default
+        let apps = [
+            "/Applications/Ollama.app",
+            NSHomeDirectory() + "/Applications/Ollama.app",
+        ]
+        if apps.contains(where: { fm.fileExists(atPath: $0) }) { return true }
+        let bin = "/Applications/Ollama.app/Contents/Resources/ollama"
+        if fm.isExecutableFile(atPath: bin) { return true }
+        var isDir: ObjCBool = false
+        let models = NSHomeDirectory() + "/.ollama/models"
+        return fm.fileExists(atPath: models, isDirectory: &isDir) && isDir.boolValue
     }
 
     private func isOllamaOwned(_ cmd: String) -> Bool {
@@ -1395,6 +1451,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func ollamaDisplayName(_ name: String) -> String {
         if name.hasPrefix("library/") { return String(name.dropFirst("library/".count)) }
         return name
+    }
+
+    private func ollamaRowName(_ row: [String: Any]) -> String? {
+        let raw = (row["name"] as? String) ?? (row["model"] as? String)
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw
     }
 
     private func ollamaShort(_ name: String, embed: Bool) -> String {
