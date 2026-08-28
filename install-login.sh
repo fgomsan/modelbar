@@ -13,9 +13,11 @@ mkdir -p "$HOME/Library/LaunchAgents"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 BIN="$DEST/ModelBar.app/Contents/MacOS/ModelBar"
 
-# Optional: export MODELBAR_DS4_DIR and/or MODELBAR_GGUF_DIRS before running
-# this script if you want the login item to see those folders. A clean
-# LM Studio / Ollama setup does not need them.
+# Optional: export MODELBAR_DS4_DIR, MODELBAR_GGUF_DIRS,
+# MODELBAR_OMLX_PORT, and/or MODELBAR_OMLX_API_KEY before running this
+# script if you want the login item to see those. A clean LM Studio /
+# Ollama / oMLX setup does not need them (oMLX port and API key come
+# from ~/.omlx/settings.json).
 optional_env=""
 if [[ -n "${MODELBAR_DS4_DIR:-}" ]]; then
 	optional_env+="
@@ -26,6 +28,16 @@ if [[ -n "${MODELBAR_GGUF_DIRS:-}" ]]; then
 	optional_env+="
 		<key>MODELBAR_GGUF_DIRS</key>
 		<string>${MODELBAR_GGUF_DIRS}</string>"
+fi
+if [[ -n "${MODELBAR_OMLX_PORT:-}" ]]; then
+	optional_env+="
+		<key>MODELBAR_OMLX_PORT</key>
+		<string>${MODELBAR_OMLX_PORT}</string>"
+fi
+if [[ -n "${MODELBAR_OMLX_API_KEY:-}" ]]; then
+	optional_env+="
+		<key>MODELBAR_OMLX_API_KEY</key>
+		<string>${MODELBAR_OMLX_API_KEY}</string>"
 fi
 
 cat > "$PLIST" <<EOF
@@ -48,7 +60,7 @@ cat > "$PLIST" <<EOF
 		<key>HOME</key>
 		<string>${HOME}</string>
 		<key>PATH</key>
-		<string>${HOME}/.lmstudio/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>${optional_env}
+		<string>${HOME}/.omlx/bin:${HOME}/.lmstudio/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>${optional_env}
 	</dict>
 </dict>
 </plist>
