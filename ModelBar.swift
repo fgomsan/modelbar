@@ -1276,7 +1276,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let raw = ((server?["host"] as? String) ?? (omlxSettingsJSON()?["host"] as? String))?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !raw.isEmpty else { return nil }
-        let host = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.first.map(String.init) ?? raw
+        let parts = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let host = parts.first.map { String($0) } ?? raw
         let low = host.lowercased()
         if low == "0.0.0.0" || low == "::" || low == "*" || low == "127.0.0.1" || low == "localhost" {
             return nil
