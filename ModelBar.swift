@@ -69,8 +69,8 @@ private enum L {
     static var viewerTitle: String { es ? "ModelBar solo informa" : "ModelBar is a viewer" }
     static var viewerBody: String {
         es
-            ? "No carga ni quita modelos. Ábrelo en LM Studio o Ollama si quieres usarlo."
-            : "It does not load or unload models. Open it in LM Studio or Ollama to use it."
+            ? "No carga ni quita modelos. Ábrelo en LM Studio, Ollama o oMLX si quieres usarlo."
+            : "It does not load or unload models. Open it in LM Studio, Ollama, or oMLX to use it."
     }
     static var ggufTitle: String { es ? "Este GGUF no está en LM Studio ni Ollama" : "This GGUF is not in LM Studio or Ollama" }
     static var ggufBody: String {
@@ -351,7 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var noBackendsInstalled: Bool {
         if case .notInstalled = lmsStatus, case .notInstalled = ollamaStatus, case .notInstalled = omlxStatus {
-            return !lastDS4OnDisk
+            return !lastDS4OnDisk && !lastOMLXOnDisk
         }
         return false
     }
@@ -946,7 +946,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // GET-only. Never POST /load or /unload, never start `omlx`. Port comes from
     // this Mac: MODELBAR_OMLX_PORT, `omlx serve --port`, ~/.omlx/settings.json,
-    // then :8083 / :8000 only if the JSON is actually oMLX (owned_by / status).
+    // then :8000 / :8083 only if /health has engine_pool or the JSON is oMLX
+    // (owned_by / status), so DS4 on :8000 is not stolen.
     private func snapshotOMLX(
         loaded: inout [LoadedModel],
         disk: inout [DiskModel],
@@ -961,14 +962,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch probe.outcome {
         case .json(let obj):
             let rows = omlxRows(obj)
-            if rows.isEmpty, !Self.isOMLXCatalog(obj) {
+            if rows.isEmpty, !Self.isOMLXCatalog(obj), probe.pool == nil {
                 break
             }
             appendOMLXRows(rows, loaded: &loaded, disk: &disk, rss: rss)
+            appendOMLXHealthLoaded(probe.pool, loaded: &loaded, disk: disk, rss: rss)
             if loaded.contains(where: { $0.runtime == "oMLX" }) {
                 return (.available, nil)
             }
-            if rows.contains(where: { ($0["is_loading"] as? Bool) == true }) {
+            if rows.contains(where: { Self.jsonBool($0["is_loading"]) == true }) {
                 return (.available, L.omlxStarting)
             }
             return (.available, nil)
@@ -976,10 +978,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !disk.contains(where: { $0.runtime == "oMLX" }) {
                 disk.append(contentsOf: scanOMLXFolders(already: disk))
             }
+            appendOMLXHealthLoaded(probe.pool, loaded: &loaded, disk: disk, rss: rss)
             return (.unknown(L.omlxHTTPAuth), nil)
         case .timeout, .failed, .httpStatus:
             if !disk.contains(where: { $0.runtime == "oMLX" }) {
                 disk.append(contentsOf: scanOMLXFolders(already: disk))
+            }
+            appendOMLXHealthLoaded(probe.pool, loaded: &loaded, disk: disk, rss: rss)
+            if loaded.contains(where: { $0.runtime == "oMLX" }) {
+                return (.unknown(L.omlxNoHTTP), nil)
             }
             if processAlive { return (.unknown(L.omlxNoHTTP), L.omlxStarting) }
             return (.unknown(L.omlxNoHTTP), nil)
@@ -988,6 +995,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if !disk.contains(where: { $0.runtime == "oMLX" }) {
             disk.append(contentsOf: scanOMLXFolders(already: disk))
+        }
+        appendOMLXHealthLoaded(probe.pool, loaded: &loaded, disk: disk, rss: rss)
+        if loaded.contains(where: { $0.runtime == "oMLX" }) {
+            return (.available, nil)
         }
         if processAlive {
             return (.unknown(L.omlxNoHTTP), L.omlxStarting)
@@ -1017,7 +1028,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if diskBytes > 0 { return diskBytes }
                 return 0
             }()
-            let isLoaded = (row["loaded"] as? Bool) == true
+            let isLoaded = Self.jsonBool(row["loaded"]) == true
             if isLoaded {
                 var bytes = ramBytes
                 if bytes == 0, !usedRSS, rss > 0 {
@@ -1051,59 +1062,118 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             )
         }
-        let statusKnown = rows.contains { $0["loaded"] is Bool }
+        let statusKnown = rows.contains { $0["loaded"] != nil }
         if !statusKnown,
            !loaded.contains(where: { $0.runtime == "oMLX" }),
            rss > 2 * 1_073_741_824
         {
-            // /v1/models lists the library, not load state. Heavy RSS means something is in RAM.
-            let first = rows.first { row in
-                guard let key = omlxRowID(row) else { return false }
-                return !omlxSkipRow(row, key: key)
-            }
-            if let first, let key = omlxRowID(first) {
-                loaded.append(
-                    LoadedModel(
-                        runtime: "oMLX",
-                        key: key,
-                        label: omlxDisplayName(first, key: key),
-                        short: shortName(key, embed: isEmbedName(key)),
-                        identifier: key,
-                        badge: Self.badge(
-                            runtime: "oMLX",
-                            format: "mlx",
-                            vision: omlxVision(first, key: key),
-                            extra: omlxExtra(first, key: key)
-                        ),
-                        bytes: rss,
-                        managed: true,
-                        sizeKind: .ram
-                    )
+            // Catalog has no load flags (OpenAI /v1/models). Name unknown; RSS says RAM is busy.
+            loaded.append(
+                LoadedModel(
+                    runtime: "oMLX",
+                    key: "omlx",
+                    label: "oMLX",
+                    short: "oMLX",
+                    identifier: "omlx",
+                    badge: Self.badge(runtime: "oMLX", format: "mlx", vision: false, extra: nil),
+                    bytes: rss,
+                    managed: true,
+                    sizeKind: .ram
                 )
-            }
+            )
         }
     }
 
-    private func probeOMLXHTTP(processPort: Int?, processAlive: Bool) -> (outcome: HTTPOutcome, base: String?) {
+    private func appendOMLXHealthLoaded(
+        _ pool: [String: Any]?,
+        loaded: inout [LoadedModel],
+        disk: [DiskModel],
+        rss: Int64
+    ) {
+        guard let pool else { return }
+        var ids: [String] = []
+        if let names = pool["loaded_models"] as? [String] {
+            ids = names
+        } else {
+            for row in Self.objects(pool["loaded_models"]) {
+                if let id = omlxRowID(row) { ids.append(id) }
+            }
+        }
+        var usedRSS = loaded.contains { $0.runtime == "oMLX" && $0.bytes == rss }
+        for id in ids {
+            if omlxSkipRow([:], key: id) { continue }
+            if loaded.contains(where: { $0.runtime == "oMLX" && ($0.key == id || $0.identifier == id) }) {
+                continue
+            }
+            let diskRow = disk.first { $0.runtime == "oMLX" && $0.key == id }
+            var bytes = diskRow?.bytes ?? 0
+            if bytes == 0, !usedRSS, rss > 0 {
+                bytes = rss
+                usedRSS = true
+            }
+            loaded.append(
+                LoadedModel(
+                    runtime: "oMLX",
+                    key: id,
+                    label: diskRow?.label ?? displayName(id, fallback: nil),
+                    short: diskRow?.short ?? shortName(id, embed: isEmbedName(id)),
+                    identifier: id,
+                    badge: diskRow?.badge ?? Self.badge(runtime: "oMLX", format: "mlx", vision: isVision(id), extra: isEmbedName(id) ? "embed" : nil),
+                    bytes: bytes,
+                    managed: true,
+                    sizeKind: .ram
+                )
+            )
+        }
+        if !loaded.contains(where: { $0.runtime == "oMLX" }), Self.int64(pool["loaded_count"]) > 0 {
+            var bytes = Self.int64(pool["current_model_memory"])
+            if bytes == 0 { bytes = rss }
+            loaded.append(
+                LoadedModel(
+                    runtime: "oMLX",
+                    key: "omlx",
+                    label: "oMLX",
+                    short: "oMLX",
+                    identifier: "omlx",
+                    badge: Self.badge(runtime: "oMLX", format: "mlx", vision: false, extra: nil),
+                    bytes: bytes,
+                    managed: true,
+                    sizeKind: .ram
+                )
+            )
+        }
+    }
+
+    private func probeOMLXHTTP(processPort: Int?, processAlive: Bool) -> (outcome: HTTPOutcome, base: String?, pool: [String: Any]?) {
         var urls = omlxCandidateURLs(processPort: processPort, processAlive: processAlive)
         if let cached = cachedOMLXBase {
             urls.removeAll { $0 == cached }
             urls.insert(cached, at: 0)
         }
+        let bearer = omlxAPIKey()
         var lastFail: HTTPOutcome = .noConnect
+        var lastPool: [String: Any]?
         for base in urls {
+            let health = jsonGET(base + "/health")
+            var healthIsOMLX = false
+            var pool: [String: Any]?
+            if case .json(let obj) = health, Self.isOMLXHealth(obj) {
+                healthIsOMLX = true
+                pool = obj["engine_pool"] as? [String: Any]
+                lastPool = pool
+            }
             for path in ["/v1/models/status", "/admin/api/models", "/v1/models"] {
-                let outcome = jsonGET(base + path)
+                let outcome = jsonGET(base + path, bearer: bearer)
                 switch outcome {
-                case .json(let obj) where Self.isOMLXCatalog(obj):
+                case .json(let obj) where healthIsOMLX || Self.isOMLXCatalog(obj):
                     cachedOMLXBase = base
-                    return (outcome, base)
+                    return (outcome, base, pool)
                 case .json:
                     continue
                 case .httpStatus(let code) where code == 401 || code == 403:
-                    if omlxPortIsKnown(processPort: processPort, base: base) {
+                    if healthIsOMLX || omlxPortIsKnown(processPort: processPort, base: base) || omlxLoopbackDefault(base) {
                         cachedOMLXBase = base
-                        return (outcome, base)
+                        return (outcome, base, pool)
                     }
                     continue
                 case .noConnect:
@@ -1112,9 +1182,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     lastFail = outcome
                 }
             }
+            if healthIsOMLX {
+                cachedOMLXBase = base
+                if let pool {
+                    return (.json(["engine_pool": pool, "models": []]), base, pool)
+                }
+                return (.json(["models": []]), base, pool)
+            }
         }
         cachedOMLXBase = nil
-        return (lastFail, nil)
+        return (lastFail, nil, lastPool)
     }
 
     private func omlxPortIsKnown(processPort: Int?, base: String) -> Bool {
@@ -1136,8 +1213,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addPort(processPort)
         addPort(omlxSettingsPort())
         if omlxPresent() || processPort != nil || processAlive {
-            addPort(8083)
             addPort(8000)
+            addPort(8083)
         }
         var urls: [String] = []
         var seenURL = Set<String>()
@@ -1150,12 +1227,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for port in ports {
             add("http://127.0.0.1:\(port)")
         }
-        for port in ports {
-            for ip in localIPv4Addresses() {
-                add("http://\(ip):\(port)")
+        if let host = omlxSettingsHost() {
+            for port in ports {
+                add("http://\(host):\(port)")
+            }
+        }
+        if processAlive {
+            for port in ports {
+                for ip in localIPv4Addresses() {
+                    add("http://\(ip):\(port)")
+                }
             }
         }
         return urls
+    }
+
+    private func omlxLoopbackDefault(_ base: String) -> Bool {
+        guard omlxPresent() else { return false }
+        guard let url = URL(string: base) else { return false }
+        let host = url.host?.lowercased() ?? ""
+        guard host == "127.0.0.1" || host == "localhost" else { return false }
+        return url.port == 8000 || url.port == 8083
     }
 
     private func omlxEnvPort() -> Int? {
@@ -1172,9 +1264,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func omlxSettingsPort() -> Int? {
         guard let obj = omlxSettingsJSON() else { return nil }
-        if let n = obj["port"] as? Int, (1...65535).contains(n) { return n }
-        if let server = obj["server"] as? [String: Any], let n = server["port"] as? Int, (1...65535).contains(n) {
+        if let n = Self.jsonPort(obj["port"]) { return n }
+        if let server = obj["server"] as? [String: Any], let n = Self.jsonPort(server["port"]) {
             return n
+        }
+        return nil
+    }
+
+    private func omlxSettingsHost() -> String? {
+        let server = omlxSettingsJSON()?["server"] as? [String: Any]
+        let raw = ((server?["host"] as? String) ?? (omlxSettingsJSON()?["host"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !raw.isEmpty else { return nil }
+        let host = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.first.map(String.init) ?? raw
+        let low = host.lowercased()
+        if low == "0.0.0.0" || low == "::" || low == "*" || low == "127.0.0.1" || low == "localhost" {
+            return nil
+        }
+        return host
+    }
+
+    private func omlxAPIKey() -> String? {
+        let env = ProcessInfo.processInfo.environment
+        for key in ["MODELBAR_OMLX_API_KEY", "OMLX_API_KEY"] {
+            if let raw = env[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+                return raw
+            }
+        }
+        if let auth = omlxSettingsJSON()?["auth"] as? [String: Any],
+           let raw = (auth["api_key"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty
+        {
+            return raw
         }
         return nil
     }
@@ -1214,6 +1335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if apps.contains(where: { fm.fileExists(atPath: $0) }) { return true }
         if fm.isExecutableFile(atPath: NSHomeDirectory() + "/.omlx/bin/omlx") { return true }
         if fm.isExecutableFile(atPath: "/opt/homebrew/bin/omlx") { return true }
+        if fm.fileExists(atPath: "/opt/homebrew/opt/omlx") { return true }
         if omlxSettingsJSON() != nil { return true }
         var isDir: ObjCBool = false
         let models = omlxBasePath() + "/models"
@@ -1300,20 +1422,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return Self.objects(obj["data"])
     }
 
+    static func isOMLXHealth(_ obj: [String: Any]) -> Bool {
+        obj["engine_pool"] is [String: Any]
+    }
+
     static func isOMLXCatalog(_ obj: [String: Any]) -> Bool {
-        let models = objects(obj["models"])
-        if models.contains(where: { row in
+        if isOMLXHealth(obj) { return true }
+        if obj["loaded_count"] != nil, obj["models"] != nil { return true }
+        func rowLooksLike(_ row: [String: Any]) -> Bool {
             if (row["owned_by"] as? String)?.lowercased() == "omlx" { return true }
-            if row["loaded"] is Bool, row["estimated_size"] != nil { return true }
-            if row["loaded"] is Bool, row["model_path"] is String { return true }
-            return false
-        }) {
-            return true
+            // /v1/models/status rows always carry `loaded`; OpenAI /v1/models does not.
+            return row["loaded"] != nil
         }
-        let data = objects(obj["data"])
-        if data.contains(where: { ($0["owned_by"] as? String)?.lowercased() == "omlx" }) {
-            return true
-        }
+        if objects(obj["models"]).contains(where: rowLooksLike) { return true }
+        if objects(obj["data"]).contains(where: rowLooksLike) { return true }
         return false
     }
 
@@ -1334,6 +1456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func omlxDisplayName(_ row: [String: Any], key: String) -> String {
         if let name = row["display_name"] as? String, !name.isEmpty { return name }
+        if let alias = row["model_alias"] as? String, !alias.isEmpty { return alias }
         return displayName(key, fallback: nil)
     }
 
@@ -1352,7 +1475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || key.lowercased().contains("mtp")
             || ((row["model_path"] as? String)?.lowercased().contains("mtp") ?? false)
         if mtp { parts.append("MTP") }
-        if key.lowercased().contains("oq") { parts.append("oQ") }
+        if key.lowercased().contains("oq") || Self.jsonBool(row["is_paroquant"]) == true { parts.append("oQ") }
         if parts.isEmpty { return nil }
         return parts.joined(separator: " · ")
     }
@@ -1506,7 +1629,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func isOMLXOwned(_ cmd: String) -> Bool {
         let low = cmd.lowercased()
-        if low.contains("omlx.app/") { return true }
+        if low.contains("omlx.app") { return true }
         if low.contains("/omlx/") {
             if low.contains(" serve") || low.contains("omlx.cli") || low.contains("omlx.server")
                 || low.contains("uvicorn") || low.contains("-m omlx")
@@ -2017,6 +2140,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return 0
     }
 
+    static func jsonPort(_ value: Any?) -> Int? {
+        let n = int64(value)
+        guard (1...65535).contains(n) else { return nil }
+        return Int(n)
+    }
+
+    static func jsonBool(_ value: Any?) -> Bool? {
+        if let b = value as? Bool { return b }
+        if let n = value as? NSNumber { return n.boolValue }
+        return nil
+    }
+
     static func sizeLabel(_ bytes: Int64) -> String {
         guard bytes > 0 else { return "" }
         let g = Double(bytes) / 1_073_741_824.0
@@ -2044,12 +2179,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         throw simpleError(result.output)
     }
 
-    private func jsonGET(_ urlString: String) -> HTTPOutcome {
+    private func jsonGET(_ urlString: String, bearer: String? = nil) -> HTTPOutcome {
         guard let url = URL(string: urlString) else { return .failed(L.unavailable) }
         var req = URLRequest(url: url, timeoutInterval: 2)
         req.httpMethod = "GET"
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.cachePolicy = .reloadIgnoringLocalCacheData
+        if let bearer, !bearer.isEmpty {
+            req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        }
         return httpCall(req)
     }
 
