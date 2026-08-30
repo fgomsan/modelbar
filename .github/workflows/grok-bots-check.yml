@@ -5,10 +5,12 @@ on:
     paths:
       - "grok-bots/**"
       - ".github/workflows/grok-bots-check.yml"
+      - ".github/workflows/publish-grok-bots.yml"
   push:
     paths:
       - "grok-bots/**"
       - ".github/workflows/grok-bots-check.yml"
+      - ".github/workflows/publish-grok-bots.yml"
 
 jobs:
   roster:
@@ -20,3 +22,5 @@ jobs:
           python-version: "3.12"
       - name: Validate roster
         run: python3 grok-bots/scripts/check_roster.py
+      - name: Extract selftest
+        run: bash grok-bots/scripts/extract_selftest.sh

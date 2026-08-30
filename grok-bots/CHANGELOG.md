@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- `scripts/extract_selftest.sh` proves a tarball extract is a kit root (no ModelBar app files)
+- ModelBar workflow `publish-grok-bots.yml`: one secret `GROK_BOTS_TOKEN`, then Run workflow
+
 ## 0.1.0
 
 First extractable kit for [Grok Bot](https://docs.x.ai/grok-bot/overview).

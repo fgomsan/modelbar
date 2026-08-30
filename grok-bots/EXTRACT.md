@@ -8,12 +8,19 @@ donde `bots/`, `.grok/skills/` y `routines/` están en la raíz. No uses un tag
 `https://github.com/fgomsan/grok-bots` ya existe (README de GitHub). Hay que
 **force-push** el kit encima de ese commit.
 
+Prueba local de extracción (CI también la corre):
+
+```bash
+./grok-bots/scripts/extract_selftest.sh   # anidado
+./scripts/extract_selftest.sh             # raíz del kit
+```
+
 ## Opción A — tag versionado (recomendado)
 
 En un Mac autenticado como **fgomsan** con write en `grok-bots`:
 
 ```bash
-git clone --branch grok-bots-v0.1.0 --single-branch --depth 1 \
+git clone --branch grok-bots-v0.1.1 --single-branch --depth 1 \
   https://github.com/fgomsan/modelbar.git grok-bots-kit
 cd grok-bots-kit
 git remote add grok-bots https://github.com/fgomsan/grok-bots.git
@@ -52,7 +59,18 @@ cd grok-bots-kit
 
 No abras un PR de `cursor/grok-bots-split-ff28` contra `main` de ModelBar.
 
-## Opción C — dar acceso a Cursor
+## Opción C — secret + Actions (sin clone local)
+
+1. GitHub → ModelBar → Settings → Secrets → Actions → `GROK_BOTS_TOKEN`
+   (PAT con `contents:write` en `fgomsan/grok-bots`).
+2. Run workflow **Publish grok-bots** (tag `grok-bots-v0.1.1`), or:
+
+```bash
+gh workflow run publish-grok-bots.yml --ref cursor/grok-bots-kit-ff28 \
+  -f tag=grok-bots-v0.1.1
+```
+
+## Opción D — dar acceso a Cursor
 
 GitHub → Settings → Applications → **Cursor** → Repository access → añade
 `fgomsan/grok-bots`. Un Cloud Agent podrá empujar después.
@@ -60,5 +78,5 @@ GitHub → Settings → Applications → **Cursor** → Repository access → a�
 ## Qué no hacer
 
 - No mezclar este kit en `main` de ModelBar como si fuera la app.
-- No etiquetar el kit como `v0.1.0` en ModelBar (choca con el release de la app).
+- No etiquetar el kit como `v0.1.1` en ModelBar (choca con el release de la app).
 - No pegar tokens en perfiles, skills ni routines.

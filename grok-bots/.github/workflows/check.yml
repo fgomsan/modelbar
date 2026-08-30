@@ -14,3 +14,5 @@ jobs:
           python-version: "3.12"
       - name: Validate roster
         run: python3 scripts/check_roster.py
+      - name: Extract selftest
+        run: bash scripts/extract_selftest.sh

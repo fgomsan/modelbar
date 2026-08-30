@@ -135,6 +135,10 @@ def check_extract_docs() -> None:
         fail("EXTRACT.md: document grok-bots-v version tag")
     if "package.sh" not in extract:
         fail("EXTRACT.md: document package.sh")
+    if "extract_selftest.sh" not in extract:
+        fail("EXTRACT.md: document extract_selftest.sh")
+    if "GROK_BOTS_TOKEN" not in extract:
+        fail("EXTRACT.md: document GROK_BOTS_TOKEN publish workflow")
     connectors = (ROOT / "CONNECTORS.md").read_text(encoding="utf-8")
     if "Settings → Plugins" not in connectors:
         fail("CONNECTORS.md: document Settings → Plugins")
@@ -180,6 +184,9 @@ def main() -> None:
     package = ROOT / "scripts" / "package.sh"
     if not package.is_file():
         fail("scripts/package.sh missing")
+    selftest = ROOT / "scripts" / "extract_selftest.sh"
+    if not selftest.is_file():
+        fail("scripts/extract_selftest.sh missing")
     release_wf = ROOT / ".github" / "workflows" / "release-kit.yml"
     if not release_wf.is_file():
         fail(".github/workflows/release-kit.yml missing")

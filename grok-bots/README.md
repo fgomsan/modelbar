@@ -10,7 +10,7 @@ Versioned kit for **[Grok Bot](https://docs.x.ai/grok-bot/overview)**: named tea
 
 This is not a Discord/Telegram bot and not a chat-completions client. It is the roster you paste into the Grok Bot app.
 
-Intended remote: `https://github.com/fgomsan/grok-bots`. Kit version: see [`VERSION`](VERSION). Extract: [`EXTRACT.md`](EXTRACT.md).
+Intended remote: `https://github.com/fgomsan/grok-bots`. Kit version: see [`VERSION`](VERSION) (`grok-bots-v0.1.1`). Extract: [`EXTRACT.md`](EXTRACT.md).
 
 ## Requisitos / Requirements
 
@@ -126,18 +126,18 @@ python3 scripts/check_roster.py
 
 ## Extraer / Publish to github.com/fgomsan/grok-bots
 
-Full playbook: [`EXTRACT.md`](EXTRACT.md). Version tag (kit as repo root): `grok-bots-v0.1.0`.
+Full playbook: [`EXTRACT.md`](EXTRACT.md). Version tag (kit as repo root): `grok-bots-v0.1.1`.
 
 ```bash
-git clone --branch grok-bots-v0.1.0 --single-branch --depth 1 \
+git clone --branch grok-bots-v0.1.1 --single-branch --depth 1 \
   https://github.com/fgomsan/modelbar.git grok-bots-kit
 cd grok-bots-kit
 ./scripts/publish.sh --force
 ```
 
-From this tree: `./grok-bots/scripts/publish.sh --force` (nested) or `./scripts/publish.sh --force` (kit root). `--force` replaces the GitHub-generated README. Tarball: `./scripts/package.sh`.
+From this tree: `./grok-bots/scripts/publish.sh --force` (nested) or `./scripts/publish.sh --force` (kit root). `--force` replaces the GitHub-generated README. Prove extract: `./grok-bots/scripts/extract_selftest.sh`. Tarball: `./scripts/package.sh`.
 
-This Cloud Agent cannot push to `fgomsan/grok-bots` until Cursor’s GitHub App is granted that repo.
+This Cloud Agent cannot push to `fgomsan/grok-bots` until Cursor’s GitHub App is granted that repo, or until secret `GROK_BOTS_TOKEN` is set and **Publish grok-bots** is run.
 
 ## License
 

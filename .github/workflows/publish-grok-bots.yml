@@ -1,0 +1,46 @@
+name: Publish grok-bots
+
+# Fills https://github.com/fgomsan/grok-bots from tag grok-bots-v* (kit as root).
+# Requires repo secret GROK_BOTS_TOKEN: a PAT with contents:write on that repo.
+#
+#   gh workflow run publish-grok-bots.yml --ref cursor/grok-bots-kit-ff28
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Kit tag to publish (kit-as-root commit)
+        required: true
+        default: grok-bots-v0.1.1
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Confirm kit root
+        run: |
+          set -euo pipefail
+          test -f bots/librarian/PROFILE.md
+          test -f .grok/skills/load-this-kit/SKILL.md
+          test -d routines
+          test ! -f ModelBar.swift
+          python3 scripts/check_roster.py
+      - name: Force-push to fgomsan/grok-bots
+        env:
+          TOKEN: ${{ secrets.GROK_BOTS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${TOKEN}" ]]; then
+            echo "::error::Add repository secret GROK_BOTS_TOKEN (PAT with contents:write on fgomsan/grok-bots), then re-run this workflow."
+            exit 1
+          fi
+          git remote add grok-bots "https://x-access-token:${TOKEN}@github.com/fgomsan/grok-bots.git"
+          git push --force grok-bots HEAD:main
+          echo "published HEAD to https://github.com/fgomsan/grok-bots"
