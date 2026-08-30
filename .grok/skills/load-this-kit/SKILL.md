@@ -29,9 +29,11 @@ The kit should live on the shared Agent Computer (default `/workspace/grok-bots`
 2. `git status` and `git log -1 --oneline`. Do not push.
 3. Read `AGENTS.md` and `README.md`.
 4. Inventory:
-   - each `bots/*/PROFILE.md` → Name, Title, first standing rule
+   - `VERSION`
+   - each `bots/*/PROFILE.md` (skip `_template`) → Name, Title, first standing rule
    - each `.grok/skills/*/SKILL.md` → `name` and `short-description`
    - each `routines/*.md` → owner Bot named in the file
+   - `CONNECTORS.md` for the plugin list per Bot
 5. Flag gaps: profile without a first task, skill without an owner Bot, routine whose skill file is missing.
 6. Write the table into the conversation. Optionally save a copy under `/workspace/projects/grok-bots/roster-latest.md`.
 

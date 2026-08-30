@@ -102,7 +102,46 @@ def check_routines() -> list[str]:
     return names
 
 
-def check_readme(bots: list[str], skills: list[str], routines: list[str]) -> None:
+def check_version() -> str:
+    path = ROOT / "VERSION"
+    if not path.is_file():
+        fail("VERSION missing")
+    version = path.read_text(encoding="utf-8").strip()
+    if not re.match(r"^\d+\.\d+\.\d+$", version):
+        fail("VERSION must be semver X.Y.Z")
+    return version
+
+
+def check_groups() -> list[str]:
+    groups = ROOT / "groups"
+    if not groups.is_dir():
+        fail("groups/ missing")
+    files = sorted(p for p in groups.glob("*.md") if p.is_file())
+    if not files:
+        fail("no groups")
+    return [p.name for p in files]
+
+
+def check_extract_docs() -> None:
+    for name in ("EXTRACT.md", "CONNECTORS.md", "CHANGELOG.md"):
+        if not (ROOT / name).is_file():
+            fail(f"{name} missing")
+    extract = (ROOT / "EXTRACT.md").read_text(encoding="utf-8")
+    if "fgomsan/grok-bots" not in extract:
+        fail("EXTRACT.md: name the destination repo")
+    if "publish.sh" not in extract:
+        fail("EXTRACT.md: document publish.sh")
+    connectors = (ROOT / "CONNECTORS.md").read_text(encoding="utf-8")
+    if "Settings → Plugins" not in connectors:
+        fail("CONNECTORS.md: document Settings → Plugins")
+
+
+def check_readme(
+    bots: list[str],
+    skills: list[str],
+    routines: list[str],
+    groups: list[str],
+) -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for name in bots:
         if f"bots/{name}" not in readme:
@@ -113,20 +152,32 @@ def check_readme(bots: list[str], skills: list[str], routines: list[str]) -> Non
     for name in routines:
         if name not in readme:
             fail(f"README.md: missing routine {name}")
+    for name in groups:
+        if f"groups/{name}" not in readme and name not in readme:
+            fail(f"README.md: missing group {name}")
+    for token in ("EXTRACT.md", "CONNECTORS.md", "VERSION"):
+        if token not in readme:
+            fail(f"README.md: missing {token}")
 
 
 def main() -> None:
     bots = check_bots()
     skills = check_skills()
     routines = check_routines()
+    groups = check_groups()
+    version = check_version()
+    check_extract_docs()
     for required in ("README.md", "AGENTS.md", "LICENSE", "SHARE.md"):
         if not (ROOT / required).is_file():
             fail(f"{required} missing")
     publish = ROOT / "scripts" / "publish.sh"
     if not publish.is_file():
         fail("scripts/publish.sh missing")
-    check_readme(bots, skills, routines)
-    print(f"ok: {len(bots)} bots, {len(skills)} skills, {len(routines)} routines")
+    check_readme(bots, skills, routines, groups)
+    print(
+        f"ok: v{version} {len(bots)} bots, {len(skills)} skills, "
+        f"{len(routines)} routines, {len(groups)} groups"
+    )
 
 
 if __name__ == "__main__":
