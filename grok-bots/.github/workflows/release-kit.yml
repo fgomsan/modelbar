@@ -1,0 +1,54 @@
+name: release-kit
+
+# Tag grok-bots-v* (not v*) so ModelBar's app release workflow does not fire.
+on:
+  push:
+    tags:
+      - "grok-bots-v*"
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate roster
+        run: python3 scripts/check_roster.py
+      - name: Package
+        run: bash scripts/package.sh
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="$(tr -d '[:space:]' < VERSION)"
+          TAR="grok-bots-${VER}.tar.gz"
+          NOTES="$(mktemp)"
+          {
+            echo "Versioned Grok Bot kit (profiles, skills, routines)."
+            echo
+            echo "Intended remote: https://github.com/fgomsan/grok-bots"
+            echo
+            echo '```bash'
+            echo "git clone --branch ${GITHUB_REF_NAME} --single-branch --depth 1 \\"
+            echo "  https://github.com/${GITHUB_REPOSITORY}.git grok-bots-kit"
+            echo "cd grok-bots-kit"
+            echo "./scripts/publish.sh --force"
+            echo '```'
+            echo
+            cat CHANGELOG.md
+          } > "$NOTES"
+          extra=()
+          if [[ "$GITHUB_REPOSITORY" == "fgomsan/modelbar" ]]; then
+            extra+=(--latest=false)
+          fi
+          gh release create "$GITHUB_REF_NAME" "$TAR" \
+            --title "Grok Bot kit ${VER}" \
+            --notes-file "$NOTES" \
+            "${extra[@]}"
