@@ -116,15 +116,16 @@ python3 scripts/check_roster.py
 
 ## Extraer / Publish to github.com/fgomsan/grok-bots
 
-Create the empty GitHub repo first (this environment cannot). If the kit still lives as `grok-bots/` inside another clone:
+The remote exists. This Cloud Agent **cannot push** to it (token is scoped to ModelBar). From a machine logged in as **fgomsan**:
 
 ```bash
-./grok-bots/scripts/publish.sh https://github.com/fgomsan/grok-bots.git
+git clone --branch cursor/grok-bots-split-ff28 --single-branch https://github.com/fgomsan/modelbar.git grok-bots-kit
+cd grok-bots-kit
+git remote add grok-bots https://github.com/fgomsan/grok-bots.git
+git push --force grok-bots cursor/grok-bots-split-ff28:main
 ```
 
-That runs `git subtree split` and pushes the split branch to `main` on the new remote.
-
-If this directory already **is** the git root, push `main` as usual.
+`--force` is required if `main` already has the GitHub-generated README. To let a Cloud Agent push later, grant that GitHub App access to `fgomsan/grok-bots`.
 
 ## License
 
