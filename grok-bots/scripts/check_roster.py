@@ -45,7 +45,9 @@ def check_bots() -> list[str]:
     bots = ROOT / "bots"
     if not bots.is_dir():
         fail("bots/ missing")
-    for folder in sorted(p for p in bots.iterdir() if p.is_dir()):
+    for folder in sorted(
+        p for p in bots.iterdir() if p.is_dir() and not p.name.startswith("_")
+    ):
         profile = folder / "PROFILE.md"
         first = folder / "FIRST_TASK.md"
         if not profile.is_file():
