@@ -131,6 +131,10 @@ def check_extract_docs() -> None:
         fail("EXTRACT.md: name the destination repo")
     if "publish.sh" not in extract:
         fail("EXTRACT.md: document publish.sh")
+    if "grok-bots-v" not in extract:
+        fail("EXTRACT.md: document grok-bots-v version tag")
+    if "package.sh" not in extract:
+        fail("EXTRACT.md: document package.sh")
     connectors = (ROOT / "CONNECTORS.md").read_text(encoding="utf-8")
     if "Settings → Plugins" not in connectors:
         fail("CONNECTORS.md: document Settings → Plugins")
@@ -173,6 +177,12 @@ def main() -> None:
     publish = ROOT / "scripts" / "publish.sh"
     if not publish.is_file():
         fail("scripts/publish.sh missing")
+    package = ROOT / "scripts" / "package.sh"
+    if not package.is_file():
+        fail("scripts/package.sh missing")
+    release_wf = ROOT / ".github" / "workflows" / "release-kit.yml"
+    if not release_wf.is_file():
+        fail(".github/workflows/release-kit.yml missing")
     check_readme(bots, skills, routines, groups)
     print(
         f"ok: v{version} {len(bots)} bots, {len(skills)} skills, "
