@@ -84,27 +84,47 @@ def check_skills() -> list[str]:
     return names
 
 
-def check_routines() -> None:
+def check_routines() -> list[str]:
     routines = ROOT / "routines"
     if not routines.is_dir():
         fail("routines/ missing")
-    files = list(routines.glob("*.md"))
+    files = sorted(routines.glob("*.md"))
     if not files:
         fail("no routines")
+    names: list[str] = []
     for path in files:
         text = path.read_text(encoding="utf-8")
         if "Owning Bot" not in text and "Owner Bot" not in text:
             fail(f"{path}: name the owning Bot")
+        names.append(path.name)
+    return names
+
+
+def check_readme(bots: list[str], skills: list[str], routines: list[str]) -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for name in bots:
+        if f"bots/{name}" not in readme:
+            fail(f"README.md: missing bots/{name}")
+    for name in skills:
+        if name not in readme:
+            fail(f"README.md: missing skill {name}")
+    for name in routines:
+        if name not in readme:
+            fail(f"README.md: missing routine {name}")
 
 
 def main() -> None:
     bots = check_bots()
     skills = check_skills()
-    check_routines()
-    for required in ("README.md", "AGENTS.md", "LICENSE"):
+    routines = check_routines()
+    for required in ("README.md", "AGENTS.md", "LICENSE", "SHARE.md"):
         if not (ROOT / required).is_file():
             fail(f"{required} missing")
-    print(f"ok: {len(bots)} bots, {len(skills)} skills")
+    publish = ROOT / "scripts" / "publish.sh"
+    if not publish.is_file():
+        fail("scripts/publish.sh missing")
+    check_readme(bots, skills, routines)
+    print(f"ok: {len(bots)} bots, {len(skills)} skills, {len(routines)} routines")
 
 
 if __name__ == "__main__":

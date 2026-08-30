@@ -8,8 +8,7 @@ Versioned kit for **[Grok Bot](https://docs.x.ai/grok-bot/overview)**: named tea
 
 This is not a Discord/Telegram bot and not a chat-completions client. It is the roster you paste into the Grok Bot app.
 
-> **Repo propio / intended remote:** `github.com/fgomsan/grok-bots`.  
-> Hasta que exista, este árbol vive en `grok-bots/` dentro de ModelBar y se extrae con `git subtree split` (ver abajo).
+Intended remote: `https://github.com/fgomsan/grok-bots`.
 
 ## Requisitos / Requirements
 
@@ -22,7 +21,7 @@ Linux desktop, Android, and iPad are not supported at launch.
 ## Cómo cargar el kit / Load the kit
 
 1. Install Grok Bot and sign in with Cursor.
-2. Clone this tree onto the **shared Agent Computer** workspace, for example:
+2. Clone this repository onto the **shared Agent Computer**, for example:
    ```text
    /workspace/grok-bots
    ```
@@ -37,6 +36,8 @@ In chat: `/` attaches a saved skill; `@` attaches Bots, groups, routines, and co
 
 ## Roster
 
+Official xAI use-case roles plus a Librarian that owns this kit on the computer.
+
 | Bot | Title | Owns | Profile |
 | --- | --- | --- | --- |
 | Librarian | Roster keeper | This repo on the cloud computer | [`bots/librarian`](bots/librarian/PROFILE.md) |
@@ -44,8 +45,14 @@ In chat: `/` attaches a saved skill; `@` attaches Bots, groups, routines, and co
 | Repro | Bug reproduction | Staging repro packs | [`bots/repro`](bots/repro/PROFILE.md) |
 | Scribe | Chief of staff | Source-linked digest | [`bots/scribe`](bots/scribe/PROFILE.md) |
 | Harbor | Account health | Ranked watch list | [`bots/harbor`](bots/harbor/PROFILE.md) |
+| Quill | Sales Outbound | Research and review-ready outreach | [`bots/quill`](bots/quill/PROFILE.md) |
+| Scout | Talent Scout | Sourcing shortlist, no contact | [`bots/scout`](bots/scout/PROFILE.md) |
+| Spend | Paid Media | Budget recommendations | [`bots/spend`](bots/spend/PROFILE.md) |
+| Ledger | Expense Manager | Weekly reconcile and drafts | [`bots/ledger`](bots/ledger/PROFILE.md) |
 
 Focused Bots beat one catch-all. An account can have up to 50 Bots and group chats combined. All of them share **one** computer: files, cookies, and CLI credentials.
+
+Start with Librarian + the one role you will actually run this week. Duplicate a Bot (same role, new scope) instead of stretching one description.
 
 ## Skills
 
@@ -59,6 +66,10 @@ Grok discovers folders under [`.grok/skills/`](.grok/skills/). Each `SKILL.md` i
 | [`reproduce-bug`](.grok/skills/reproduce-bug/SKILL.md) | Repro: staging reproduction pack |
 | [`morning-digest`](.grok/skills/morning-digest/SKILL.md) | Scribe: daily attention list |
 | [`weekly-account-health`](.grok/skills/weekly-account-health/SKILL.md) | Harbor: ranked watch list |
+| [`research-outbound`](.grok/skills/research-outbound/SKILL.md) | Quill: ICP research, no send |
+| [`source-candidates`](.grok/skills/source-candidates/SKILL.md) | Scout: shortlist, no contact |
+| [`campaign-budget-review`](.grok/skills/campaign-budget-review/SKILL.md) | Spend: recs, no budget writes |
+| [`weekly-expense-reconcile`](.grok/skills/weekly-expense-reconcile/SKILL.md) | Ledger: policy-cited summary |
 
 A useful skill states: when to use it, required inputs, sequence, how to validate, what to return, and what needs approval.
 
@@ -70,12 +81,16 @@ A **skill** is how. A **routine** is when (schedule or event) and **which Bot** 
 | --- | --- | --- |
 | Weekday 08:00 digest | Scribe | [`routines/weekday-morning-digest.md`](routines/weekday-morning-digest.md) |
 | Weekly account health | Harbor | [`routines/weekly-account-health.md`](routines/weekly-account-health.md) |
+| Nightly outbound research | Quill | [`routines/nightly-outbound-research.md`](routines/nightly-outbound-research.md) |
+| Weekday paid media | Spend | [`routines/weekday-paid-media.md`](routines/weekday-paid-media.md) |
+| Weekly expense reconcile | Ledger | [`routines/weekly-expense-reconcile.md`](routines/weekly-expense-reconcile.md) |
 
 Test the skill twice before automating. Use **Test run**; it does real work.
 
-## Group
+## Group and sharing
 
-[`groups/product-ops.md`](groups/product-ops.md) — Librarian + Piper + Repro in one thread for handoffs.
+- [`groups/product-ops.md`](groups/product-ops.md) — Librarian + Piper + Repro in one thread.
+- [`SHARE.md`](SHARE.md) — strip secrets before a public Bot share link.
 
 ## Safety (non-negotiable)
 
@@ -87,22 +102,25 @@ Test the skill twice before automating. Use **Test run**; it does real work.
 
 Official docs: [overview](https://docs.x.ai/grok-bot/overview) · [get started](https://docs.x.ai/grok-bot/get-started) · [bots](https://docs.x.ai/grok-bot/bots) · [skills & routines](https://docs.x.ai/grok-bot/skills-routines-and-automations) · [computer](https://docs.x.ai/grok-bot/computer-and-apps) · [approvals](https://docs.x.ai/grok-bot/approvals-security-and-privacy)
 
-## Extraer a un repo propio / Split to github.com/fgomsan/grok-bots
-
-El token de este entorno no puede crear repositorios. Cuando `fgomsan/grok-bots` exista (vacío):
-
-```bash
-git subtree split -P grok-bots -b grok-bots-main
-git push https://github.com/fgomsan/grok-bots.git grok-bots-main:main
-```
-
 ## Check
 
+From the root of **this** kit:
+
 ```bash
-python3 grok-bots/scripts/check_roster.py
+python3 scripts/check_roster.py
 ```
 
-From inside this folder: `python3 scripts/check_roster.py`.
+## Extraer / Publish to github.com/fgomsan/grok-bots
+
+Create the empty GitHub repo first (this environment cannot). If the kit still lives as `grok-bots/` inside another clone:
+
+```bash
+./grok-bots/scripts/publish.sh https://github.com/fgomsan/grok-bots.git
+```
+
+That runs `git subtree split` and pushes the split branch to `main` on the new remote.
+
+If this directory already **is** the git root, push `main` as usual.
 
 ## License
 
