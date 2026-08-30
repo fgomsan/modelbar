@@ -1,0 +1,109 @@
+# Grok Bots
+
+Kit versionado para **[Grok Bot](https://docs.x.ai/grok-bot/overview)** de xAI: compañeros con nombre, ordenador en la nube, skills y routines.
+
+No es un bot de Discord, Telegram, ni de la API de chat. Es el roster que copias a la app de escritorio (macOS/Windows) o iOS.
+
+Versioned kit for **[Grok Bot](https://docs.x.ai/grok-bot/overview)**: named teammates, a shared cloud computer, skills, and routines.
+
+This is not a Discord/Telegram bot and not a chat-completions client. It is the roster you paste into the Grok Bot app.
+
+> **Repo propio / intended remote:** `github.com/fgomsan/grok-bots`.  
+> Hasta que exista, este árbol vive en `grok-bots/` dentro de ModelBar y se extrae con `git subtree split` (ver abajo).
+
+## Requisitos / Requirements
+
+- Plan eligible: SuperGrok Plus, SuperGrok Heavy, Cursor Pro+, Cursor Ultra, or Cursor Teams Standard/Premium
+- [Grok Bot desktop](https://docs.x.ai/grok-bot/get-started) (macOS or Windows) or iOS 18+
+- Cursor account (Grok Bot does not support Legacy Privacy Mode)
+
+Linux desktop, Android, and iPad are not supported at launch.
+
+## Cómo cargar el kit / Load the kit
+
+1. Install Grok Bot and sign in with Cursor.
+2. Clone this tree onto the **shared Agent Computer** workspace, for example:
+   ```text
+   /workspace/grok-bots
+   ```
+3. Create each Bot: **New → Create new agent → Bot actions → Edit Profile**.
+4. Paste **Name**, **Title**, and **Description** from `bots/<id>/PROFILE.md`.
+5. Send the prompt in `FIRST_TASK.md` (read-only, no external sends).
+6. When the result is good, send the save-skill prompt in that file.
+7. Enable the in-app skill for that Bot under **Settings → Plugins → Yours**.
+8. Only then paste a prompt from `routines/` and use **Test run**.
+
+In chat: `/` attaches a saved skill; `@` attaches Bots, groups, routines, and connectors.
+
+## Roster
+
+| Bot | Title | Owns | Profile |
+| --- | --- | --- | --- |
+| Librarian | Roster keeper | This repo on the cloud computer | [`bots/librarian`](bots/librarian/PROFILE.md) |
+| Piper | Product performance | Investigations with evidence | [`bots/piper`](bots/piper/PROFILE.md) |
+| Repro | Bug reproduction | Staging repro packs | [`bots/repro`](bots/repro/PROFILE.md) |
+| Scribe | Chief of staff | Source-linked digest | [`bots/scribe`](bots/scribe/PROFILE.md) |
+| Harbor | Account health | Ranked watch list | [`bots/harbor`](bots/harbor/PROFILE.md) |
+
+Focused Bots beat one catch-all. An account can have up to 50 Bots and group chats combined. All of them share **one** computer: files, cookies, and CLI credentials.
+
+## Skills
+
+Grok discovers folders under [`.grok/skills/`](.grok/skills/). Each `SKILL.md` is also the text to save in Grok Bot (**Settings → Plugins** or *“Save this process as a skill named …”*).
+
+| Skill | When |
+| --- | --- |
+| [`load-this-kit`](.grok/skills/load-this-kit/SKILL.md) | Clone/sync this repo on the Agent Computer |
+| [`save-skill-from-task`](.grok/skills/save-skill-from-task/SKILL.md) | Turn a good run into a skill |
+| [`investigate-performance`](.grok/skills/investigate-performance/SKILL.md) | Piper: latency/error investigation |
+| [`reproduce-bug`](.grok/skills/reproduce-bug/SKILL.md) | Repro: staging reproduction pack |
+| [`morning-digest`](.grok/skills/morning-digest/SKILL.md) | Scribe: daily attention list |
+| [`weekly-account-health`](.grok/skills/weekly-account-health/SKILL.md) | Harbor: ranked watch list |
+
+A useful skill states: when to use it, required inputs, sequence, how to validate, what to return, and what needs approval.
+
+## Routines
+
+A **skill** is how. A **routine** is when (schedule or event) and **which Bot** owns it. Max 50 routines per Bot. Background runs continue with the laptop closed.
+
+| Routine | Owner | File |
+| --- | --- | --- |
+| Weekday 08:00 digest | Scribe | [`routines/weekday-morning-digest.md`](routines/weekday-morning-digest.md) |
+| Weekly account health | Harbor | [`routines/weekly-account-health.md`](routines/weekly-account-health.md) |
+
+Test the skill twice before automating. Use **Test run**; it does real work.
+
+## Group
+
+[`groups/product-ops.md`](groups/product-ops.md) — Librarian + Piper + Repro in one thread for handoffs.
+
+## Safety (non-negotiable)
+
+- Do not use separate Bots as a security boundary.
+- Strip secrets before [sharing a Bot](https://docs.x.ai/grok-bot/bots). Share links are public copies of config, not of your computer.
+- Passwords, 2FA, CAPTCHAs, and payments: human takes over **Agent Computer**. Never paste them in chat.
+- Sending, publishing, purchasing, deleting, and production changes stay behind approval.
+- Put standing rules in the **description**; put the day’s work in the **message**.
+
+Official docs: [overview](https://docs.x.ai/grok-bot/overview) · [get started](https://docs.x.ai/grok-bot/get-started) · [bots](https://docs.x.ai/grok-bot/bots) · [skills & routines](https://docs.x.ai/grok-bot/skills-routines-and-automations) · [computer](https://docs.x.ai/grok-bot/computer-and-apps) · [approvals](https://docs.x.ai/grok-bot/approvals-security-and-privacy)
+
+## Extraer a un repo propio / Split to github.com/fgomsan/grok-bots
+
+El token de este entorno no puede crear repositorios. Cuando `fgomsan/grok-bots` exista (vacío):
+
+```bash
+git subtree split -P grok-bots -b grok-bots-main
+git push https://github.com/fgomsan/grok-bots.git grok-bots-main:main
+```
+
+## Check
+
+```bash
+python3 grok-bots/scripts/check_roster.py
+```
+
+From inside this folder: `python3 scripts/check_roster.py`.
+
+## License
+
+MIT.
