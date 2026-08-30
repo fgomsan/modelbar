@@ -126,14 +126,18 @@ python3 scripts/check_roster.py
 
 ## Extraer / Publish to github.com/fgomsan/grok-bots
 
-Full playbook: [`EXTRACT.md`](EXTRACT.md). From a machine logged in as **fgomsan** with write access to that repo:
+Full playbook: [`EXTRACT.md`](EXTRACT.md). Version tag (kit as repo root): `grok-bots-v0.1.0`.
 
 ```bash
-./grok-bots/scripts/publish.sh --force   # nested in ModelBar
-./scripts/publish.sh --force             # kit is already the git root
+git clone --branch grok-bots-v0.1.0 --single-branch --depth 1 \
+  https://github.com/fgomsan/modelbar.git grok-bots-kit
+cd grok-bots-kit
+./scripts/publish.sh --force
 ```
 
-`--force` replaces the GitHub-generated README on `main`. This Cloud Agent cannot push (token is scoped to ModelBar) until Cursor’s GitHub App is granted `fgomsan/grok-bots`.
+From this tree: `./grok-bots/scripts/publish.sh --force` (nested) or `./scripts/publish.sh --force` (kit root). `--force` replaces the GitHub-generated README. Tarball: `./scripts/package.sh`.
+
+This Cloud Agent cannot push to `fgomsan/grok-bots` until Cursor’s GitHub App is granted that repo.
 
 ## License
 

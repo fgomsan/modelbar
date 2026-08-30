@@ -9,3 +9,5 @@ __pycache__/
 .vscode/
 mcp_credentials.json
 secrets/
+grok-bots-*.tar.gz
+*.bundle
