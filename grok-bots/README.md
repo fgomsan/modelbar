@@ -10,7 +10,7 @@ Versioned kit for **[Grok Bot](https://docs.x.ai/grok-bot/overview)**: named tea
 
 This is not a Discord/Telegram bot and not a chat-completions client. It is the roster you paste into the Grok Bot app.
 
-Intended remote: `https://github.com/fgomsan/grok-bots`.
+Intended remote: `https://github.com/fgomsan/grok-bots`. Kit version: see [`VERSION`](VERSION). Extract: [`EXTRACT.md`](EXTRACT.md).
 
 ## Requisitos / Requirements
 
@@ -35,6 +35,8 @@ Linux desktop, Android, and iPad are not supported at launch.
 8. Only then paste a prompt from `routines/` and use **Test run**.
 
 In chat: `/` attaches a saved skill; `@` attaches Bots, groups, routines, and connectors.
+
+New role: copy [`bots/_template`](bots/_template) and follow [`promote-to-durable-bot`](.grok/skills/promote-to-durable-bot/SKILL.md).
 
 ## Roster
 
@@ -76,6 +78,8 @@ Grok discovers folders under [`.grok/skills/`](.grok/skills/). Each `SKILL.md` i
 
 A useful skill states: when to use it, required inputs, sequence, how to validate, what to return, and what needs approval.
 
+When **Teach a task** is in the computer view, record one browser path (up to ten minutes, no microphone). Review the draft skill, add failure and approval rules, then test on a second input. If the control is missing, save from written instructions instead.
+
 ## Routines
 
 A **skill** is how. A **routine** is when (schedule or event) and **which Bot** owns it. Max 50 routines per Bot. Background runs continue with the laptop closed.
@@ -91,9 +95,15 @@ A **skill** is how. A **routine** is when (schedule or event) and **which Bot** 
 
 Test the skill twice before automating. Use **Test run**; it does real work.
 
+## Connectors
+
+[`CONNECTORS.md`](CONNECTORS.md) maps each Bot to the official plugin list. Install under **Settings → Plugins**. Event routines use Cursor account integrations, not the Slack/GitHub plugin.
+
 ## Group and sharing
 
-- [`groups/product-ops.md`](groups/product-ops.md) — Librarian + Piper + Repro in one thread.
+- [`groups/product-ops.md`](groups/product-ops.md) — Librarian + Piper + Repro.
+- [`groups/sales-outbound.md`](groups/sales-outbound.md) — Quill + Scribe.
+- [`groups/hiring.md`](groups/hiring.md) — Scout + Scribe.
 - [`SHARE.md`](SHARE.md) — strip secrets before a public Bot share link.
 
 ## Safety (non-negotiable)
@@ -116,16 +126,14 @@ python3 scripts/check_roster.py
 
 ## Extraer / Publish to github.com/fgomsan/grok-bots
 
-The remote exists. This Cloud Agent **cannot push** to it (token is scoped to ModelBar). From a machine logged in as **fgomsan**:
+Full playbook: [`EXTRACT.md`](EXTRACT.md). From a machine logged in as **fgomsan** with write access to that repo:
 
 ```bash
-git clone --branch cursor/grok-bots-split-ff28 --single-branch https://github.com/fgomsan/modelbar.git grok-bots-kit
-cd grok-bots-kit
-git remote add grok-bots https://github.com/fgomsan/grok-bots.git
-git push --force grok-bots cursor/grok-bots-split-ff28:main
+./grok-bots/scripts/publish.sh --force   # nested in ModelBar
+./scripts/publish.sh --force             # kit is already the git root
 ```
 
-`--force` is required if `main` already has the GitHub-generated README. To let a Cloud Agent push later, grant that GitHub App access to `fgomsan/grok-bots`.
+`--force` replaces the GitHub-generated README on `main`. This Cloud Agent cannot push (token is scoped to ModelBar) until Cursor’s GitHub App is granted `fgomsan/grok-bots`.
 
 ## License
 
