@@ -62,6 +62,7 @@ Grok discovers folders under [`.grok/skills/`](.grok/skills/). Each `SKILL.md` i
 | --- | --- |
 | [`load-this-kit`](.grok/skills/load-this-kit/SKILL.md) | Clone/sync this repo on the Agent Computer |
 | [`save-skill-from-task`](.grok/skills/save-skill-from-task/SKILL.md) | Turn a good run into a skill |
+| [`promote-to-durable-bot`](.grok/skills/promote-to-durable-bot/SKILL.md) | Librarian: task → profile → skill → routine |
 | [`investigate-performance`](.grok/skills/investigate-performance/SKILL.md) | Piper: latency/error investigation |
 | [`reproduce-bug`](.grok/skills/reproduce-bug/SKILL.md) | Repro: staging reproduction pack |
 | [`morning-digest`](.grok/skills/morning-digest/SKILL.md) | Scribe: daily attention list |
@@ -84,6 +85,7 @@ A **skill** is how. A **routine** is when (schedule or event) and **which Bot** 
 | Nightly outbound research | Quill | [`routines/nightly-outbound-research.md`](routines/nightly-outbound-research.md) |
 | Weekday paid media | Spend | [`routines/weekday-paid-media.md`](routines/weekday-paid-media.md) |
 | Weekly expense reconcile | Ledger | [`routines/weekly-expense-reconcile.md`](routines/weekly-expense-reconcile.md) |
+| Event: needs repro | Repro | [`routines/event-needs-repro.md`](routines/event-needs-repro.md) |
 
 Test the skill twice before automating. Use **Test run**; it does real work.
 

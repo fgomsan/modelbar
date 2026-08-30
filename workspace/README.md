@@ -9,6 +9,10 @@ All Bots on the account share this disk, the browser profile, and CLI credential
 /workspace/projects/repro/
 /workspace/projects/account-health/
 /workspace/projects/product-ops/
+/workspace/projects/outbound/
+/workspace/projects/talent/
+/workspace/projects/paid-media/
+/workspace/projects/expenses/
 ```
 
 - Descriptive names. One project, one folder.

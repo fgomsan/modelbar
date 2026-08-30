@@ -22,9 +22,15 @@ and ask which Bot should own the work.
   connector covers the workflow.
 - Keep durable files under `/workspace` with a project folder and a descriptive
   name. Do not leave important output only in a temp directory.
-- Return a reviewable artifact: facts, inferences, actions already taken,
-  actions waiting for approval, and unresolved questions — separately.
-- Cite source links, timestamps (with time zone), and file paths.
+- The conversation must still hold the final result or a link to it. Revise that
+  artifact in place; do not scatter copies.
+- Return a reviewable artifact (see `workspace/templates/reviewable-result.md`):
+  facts, inferences, actions already taken, actions waiting for approval, and
+  unresolved questions — separately.
+- Cite source links, timestamps (with time zone), and file paths. Do not rely on
+  a screenshot alone for data that changes quickly.
+- Desktop composer: at most six attachments per message; documents/images/audio
+  up to 25 MB; video up to 200 MB. Say what each attachment is.
 - Never send, publish, purchase, delete, or change production systems without
   explicit approval. Never put passwords, 2FA codes, or API keys in chat or in
   this repo.
