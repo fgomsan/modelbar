@@ -1,5 +1,7 @@
 # Grok Bots
 
+Aquí voy a experimentar con grok bots.
+
 Kit versionado para **[Grok Bot](https://docs.x.ai/grok-bot/overview)** de xAI: compañeros con nombre, ordenador en la nube, skills y routines.
 
 No es un bot de Discord, Telegram, ni de la API de chat. Es el roster que copias a la app de escritorio (macOS/Windows) o iOS.
