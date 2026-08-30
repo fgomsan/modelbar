@@ -1,0 +1,7 @@
+# Project Grok config. Keep secrets out of this file.
+# Grok Bot connectors are installed in the app (Settings → Plugins).
+# Optional MCP servers for Grok Build / the cloud computer go here.
+
+# [mcp_servers.example]
+# url = "https://mcp.example.com/mcp"
+# headers = { Authorization = "Bearer ${EXAMPLE_TOKEN}" }
